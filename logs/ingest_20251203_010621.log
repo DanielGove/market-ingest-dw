@@ -1,0 +1,19 @@
+Exception in thread ctrl:
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/threading.py", line 1043, in _bootstrap_inner
+    self.run()
+    ~~~~~~~~^^
+  File "/usr/lib/python3.13/threading.py", line 994, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dan/coinbase-dw/ingest.py", line 232, in _control_loop
+    for rec in ctrl_reader.stream_latest_records(playback=False):
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/dan/Deepwater/src/deepwater/reader.py", line 127, in stream_latest_records
+    self._ensure_latest_chunk()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/dan/Deepwater/src/deepwater/reader.py", line 85, in _ensure_latest_chunk
+    raise RuntimeError(f"Feed '{self.feed_name}' has no chunks; cannot read records.")
+RuntimeError: Feed 'CB-CTRL' has no chunks; cannot read records.
+2025-12-03 01:06:21,539 INFO Ingest started for BTC-USD, ETH-USD
+2025-12-03 01:06:21,625 INFO Subscribed to BTC-USD, ETH-USD

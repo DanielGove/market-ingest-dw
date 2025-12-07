@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "/home/dan/coinbase-dw/snapshots.py", line 222, in <module>
+    main()
+    ~~~~^^
+  File "/home/dan/coinbase-dw/snapshots.py", line 179, in main
+    for rec in ctrl_reader.stream_latest_records(playback=False):
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/dan/Deepwater/src/deepwater/reader.py", line 127, in stream_latest_records
+    self._ensure_latest_chunk()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/dan/Deepwater/src/deepwater/reader.py", line 85, in _ensure_latest_chunk
+    raise RuntimeError(f"Feed '{self.feed_name}' has no chunks; cannot read records.")
+RuntimeError: Feed 'CB-CTRL' has no chunks; cannot read records.
+/usr/lib/python3.13/multiprocessing/resource_tracker.py:324: UserWarning: resource_tracker: There appear to be 2 leaked shared_memory objects to clean up at shutdown: {'/CB-L2SNAP-BTC-USD-ring', '/CB-L2SNAP-ETH-USD-ring'}
+  warnings.warn(
