@@ -1,5 +1,5 @@
 # Deepwater - Time-series database for market data
--e git+https://github.com/DanielGove/Deepwater.git@main
+Deepwater @ git+https://github.com/DanielGove/Deepwater.git@main
 
 # Fast JSON parsing
 orjson>=3.11.0

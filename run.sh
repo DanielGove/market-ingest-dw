@@ -9,6 +9,8 @@ BASE_PATH="${BASE_PATH:-data/coinbase-main}"
 OB_DEPTH="${OB_DEPTH:-200}"
 OB_PERIOD="${OB_PERIOD:-200}"
 VENV="./venv/bin/python"
+INGEST_SOCK="pids/ingest.sock"
+ORDERBOOK_SOCK="pids/orderbook.sock"
 
 mkdir -p logs pids
 
@@ -24,6 +26,7 @@ echo "▶️  Starting L2 ingest..."
 nohup $VENV ws_ingest_daemon.py \
     --products "$PRODUCTS" \
     --base-path "$BASE_PATH" \
+    --control-sock "$INGEST_SOCK" \
     > logs/ingest.log 2>&1 &
 echo $! > pids/ingest.pid
 echo "   ✅ L2 ingest started (PID: $(cat pids/ingest.pid))"
