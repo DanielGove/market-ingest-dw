@@ -1,127 +1,62 @@
-# Coinbase DW
+# Coinbase DW Pipeline
 
-Coinbase market data ingestion, order book reconstruction, and market making backtesting using Deepwater.
+High‑level: one ingest daemon streams Coinbase WS L2 into Deepwater feeds, and N orderbook daemons each build OB feeds at a chosen depth/period for all configured products.
 
-## Features
-
-- **Real-time ingestion** of Coinbase L2 and trade data
-- **Order book snapshots** built from L2 updates
-- **Market making backtesting** framework with PnL tracking
-- **Live monitoring** UI with latency stats
-- **Microsecond precision** time-series storage using Deepwater
-
-## Setup
-
+## Quick start
 ```bash
-cd ~/coinbase-dw
-python -m venv venv
-source venv/bin/activate
-pip install -e /home/dan/Deepwater  # Adjust path as needed
+# 1) set envs explicitly (no defaults)
+PRODUCTS="XRP-USD,BTC-USD,ETH-USD,SOL-USD" \
+BASE_PATH=data/coinbase-main \
+ORDERBOOKS="200:50,200:200" \
+./run.sh
+```
+- `PRODUCTS`: comma list used by ingest and all orderbook daemons.
+- `BASE_PATH`: Deepwater data directory.
+- `ORDERBOOKS`: comma list of `depth:period_ms` pairs; one orderbook daemon is spawned per pair.
+
+Stop everything:
+```bash
+./stop.sh
 ```
 
-## Quick Start
+## Control plane (Unix sockets)
+Two sockets live in `pids/`:
+- `pids/ingest.sock` — subscribe/unsubscribe products for L2 ingest.
+- `pids/orderbook_<depth>_<period>.sock` — control each orderbook daemon (add/remove/list products for that depth/period).
 
-### 1. Collect Data
-
-Start data ingestion (runs continuously):
+CLI helpers (executable):
 ```bash
-python ingest.py --base-path data/coinbase-test --products BTC-USD ETH-USD
+./ingest_ctl.py sub BTC-USD
+./ingest_ctl.py unsub BTC-USD
+
+./ob_ctl.py --sock pids/orderbook_200_50.sock add BTC-USD 200 50
+./ob_ctl.py --sock pids/orderbook_200_50.sock remove BTC-USD
+./ob_ctl.py --sock pids/orderbook_200_50.sock list
 ```
 
-Build order book snapshots (in another terminal):
-```bash
-python snapshots.py --base-path data/coinbase-test --products BTC-USD ETH-USD --depth 500 --interval 1.0
+## Watching orderbooks
+```
+./venv/bin/python watch_ob.py --product BTC-USD --depth 200 --period 50
+```
+Match `depth`/`period` to the orderbook daemon you started (e.g., 200/50 or 200/200).
+
+Quick sanity for multiple feeds:
+```
+./venv/bin/python tools/ob_peek.py \
+  --products BTC-USD,XRP-USD,ETH-USD,SOL-USD \
+  --depth 200 --period 50 --seconds 3
 ```
 
-### 2. Run Backtests
+## Logs and PIDs
+- Ingest: `logs/ingest.log`, `pids/ingest.pid`
+- Orderbooks: `logs/orderbook_<depth>_<period>.log`, `pids/orderbook_<depth>_<period>.pid`
 
-After collecting some data, run a market making backtest:
-```bash
-python backtest_mm.py \
-  --base-path data/coinbase-test \
-  --product BTC-USD \
-  --start 10:00 \
-  --end 12:00 \
-  --spread-bps 5 \
-  --size 0.01
+## Data reset
+```
+mkdir -p data/coinbase-main && find data/coinbase-main -mindepth 1 -delete
 ```
 
-## Commands
-
-### Data Collection
-
-**Start pipeline for a product:**
-```bash
-./run.sh BTC-USD              # Starts ingestion + snapshots for BTC-USD
-./run.sh ETH-USD              # Add another product
-./run.sh SOL-USD              # Add another product
-```
-
-**Check status:**
-```bash
-python ingest_client.py status    # Daemon status
-python ingest_client.py metrics   # Performance metrics
-python ingest_client.py list      # List all active products
-```
-
-**Stop pipeline:**
-```bash
-./stop.sh BTC-USD    # Stop just BTC-USD
-./stop.sh            # Stop everything
-```
-
-**How it works:**
-- Single daemon handles ingestion for all products
-- Each product gets its own snapshot builder process (500 levels, 1s interval)
-- Each product gets its own order book publisher (200 levels, 200ms interval)
-- **Trading strategies should consume `OB200200-{PRODUCT}` feeds**
-
-### Data Analysis
-
-**Read trades (window or tail):**
-```bash
-# Time window
-python read_trades.py --base-path data/coinbase-test --feed CB-TRADES-BTC-USD --start 10:00 --end 10:05
-
-# Tail live
-python read_trades.py --base-path data/coinbase-test --feed CB-TRADES-BTC-USD
-```
-
-**Monitor with UI:**
-```bash
-# Auto-detect feeds
-python ui.py --base-path data/coinbase-test
-
-# Specify feeds
-python ui.py --base-path data/coinbase-test --feeds CB-TRADES-BTC-USD CB-L2-BTC-USD CB-L2SNAP-BTC-USD
-```
-
-### Backtesting
-
-**Run market making backtest:**
-```bash
-python backtest_mm.py \
-  --base-path data/coinbase-test \
-  --product BTC-USD \
-  --start 09:00 \
-  --end 17:00 \
-  --spread-bps 5 \
-  --size 0.01 \
-  --max-position 0.1
-```
-
-**Parameters:**
-- `--spread-bps`: Spread in basis points (5 = 0.05%)
-- `--size`: Quote size on each side
-- `--max-position`: Maximum absolute position
-- `--maker-fee-bps`: Maker fee in bps (negative = rebate)
-- `--no-position-skew`: Disable position-based skewing
-
-## Documentation
-
-See [GUIDE.md](GUIDE.md) for:
-- Complete Deepwater library overview
-- Architecture explanation
-- Strategy customization guide
-- Performance characteristics
-- Troubleshooting tips
+## Notes
+- Orderbooks trust L2: no price bounds; levels cleared only on qty=0 and L2 snapshot records.
+- Each orderbook daemon runs a thread per product; playback=True to rebuild from history on start.
+- Control sockets are plain text; each command is one line.

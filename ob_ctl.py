@@ -1,37 +1,51 @@
 #!/usr/bin/env python3
-import sys
+"""
+CLI helper to control orderbook daemon.
+Usage:
+  ./ob_ctl.py add BTC-USD 200 200
+  ./ob_ctl.py remove BTC-USD
+  ./ob_ctl.py list
+"""
+import argparse
 import socket
-from pathlib import Path
+
+
+def send(cmd: str, sock_path: str) -> str:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.connect(sock_path)
+    s.sendall((cmd + "\n").encode("ascii"))
+    data = s.recv(1024).decode("ascii", "ignore").strip()
+    s.close()
+    return data
+
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: ob_ctl.py <ADD|REMOVE> <PRODUCT> [DEPTH PERIOD_MS] [socket_path]", file=sys.stderr)
-        sys.exit(1)
-    cmd = sys.argv[1].upper()
-    product = sys.argv[2].upper()
-    depth = None
-    period = None
-    sock_path = Path("pids/orderbook.sock")
-    # ADD requires depth/period
-    argi = 3
-    if cmd == "ADD":
-        if len(sys.argv) < 5:
-            print("Usage: ob_ctl.py ADD <PRODUCT> <DEPTH> <PERIOD_MS> [socket_path]", file=sys.stderr)
-            sys.exit(1)
-        depth = int(sys.argv[3])
-        period = int(sys.argv[4])
-        argi = 5
-    if len(sys.argv) > argi:
-        sock_path = Path(sys.argv[argi])
-    if cmd == "ADD":
-        payload = f"{cmd} {product} {depth} {period}".encode()
+    ap = argparse.ArgumentParser(description="Control orderbook daemon")
+    sub = ap.add_subparsers(dest="action", required=True)
+
+    p_add = sub.add_parser("add", help="Add product depth period")
+    p_add.add_argument("product")
+    p_add.add_argument("depth", type=int)
+    p_add.add_argument("period", type=int)
+
+    p_rm = sub.add_parser("remove", help="Remove product")
+    p_rm.add_argument("product")
+
+    sub.add_parser("list", help="List products")
+
+    ap.add_argument("--sock", default="pids/orderbook.sock", help="Orderbook control socket path")
+    args = ap.parse_args()
+
+    if args.action == "add":
+        cmd = f"ADD {args.product.upper()} {args.depth} {args.period}"
+    elif args.action == "remove":
+        cmd = f"REMOVE {args.product.upper()}"
     else:
-        payload = f"{cmd} {product}".encode()
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        s.connect(str(sock_path))
-        s.sendall(payload)
-        resp = s.recv(1024)
-    sys.stdout.write(resp.decode().strip() + "\n")
+        cmd = "LIST"
+
+    resp = send(cmd, args.sock)
+    print(resp)
+
 
 if __name__ == "__main__":
     main()
