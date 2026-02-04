@@ -1,13 +1,12 @@
--e git+https://github.com/DanielGove/Deepwater@66d557e189a3af1cba45cde06c3291fba8d07b65#egg=deepwater
-fastnumbers==5.1.1
-gevent==25.9.1
-greenlet==3.2.4
-llvmlite==0.45.1
-numba==0.62.1
-numpy==2.3.5
-orjson==3.11.4
-pysimdjson==7.0.2
-websocket-client==1.9.0
-zope.event==6.1
-zope.interface==8.1.1
-prompt_toolkit==3.0.52
+# Deepwater - Time-series database for market data
+-e git+https://github.com/DanielGove/Deepwater.git@main
+
+# Fast JSON parsing
+orjson>=3.11.0
+pysimdjson>=7.0.0
+
+# Fast number parsing
+fastnumbers>=5.1.0
+
+# WebSocket client
+websocket-client>=1.9.0

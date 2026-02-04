@@ -1,23 +1,27 @@
-#!/usr/bin/env bash
-set -e
+#!/bin/bash
+# Stop all pipeline processes
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-cd "$ROOT"
+echo "🛑 Stopping Coinbase data pipeline..."
 
-kill_if_exists() {
-  if [ -f "$1" ]; then
-    PID=$(cat "$1")
-    if kill -0 "$PID" 2>/dev/null; then
-      kill "$PID"
-      echo "Stopped $1 (PID $PID)"
-    else
-      echo "No running process for $1 (PID $PID stale)"
+for pidfile in pids/*.pid; do
+    if [ -f "$pidfile" ]; then
+        pid=$(cat "$pidfile")
+        name=$(basename "$pidfile" .pid)
+        
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "   Stopping $name (PID: $pid)..."
+            kill "$pid"
+            sleep 1
+            
+            # Force kill if still running
+            if kill -0 "$pid" 2>/dev/null; then
+                echo "   Force stopping $name..."
+                kill -9 "$pid"
+            fi
+        fi
+        
+        rm "$pidfile"
     fi
-    rm -f "$1"
-  else
-    echo "No pid file $1"
-  fi
-}
+done
 
-kill_if_exists pids/ingest.pid
-kill_if_exists pids/snapshots.pid
+echo "✅ Pipeline stopped"

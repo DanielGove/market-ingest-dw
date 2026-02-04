@@ -1,4 +1,0 @@
-usage: snapshots.py [-h] [--base-path BASE_PATH]
-                    --products PRODUCTS [PRODUCTS ...] [--depth DEPTH]
-                    [--interval INTERVAL] [--log-level LOG_LEVEL]
-snapshots.py: error: unrecognized arguments: --DEPTH 500

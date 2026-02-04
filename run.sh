@@ -1,20 +1,59 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# Start Coinbase data pipeline: L2 ingest + orderbook construction
+
 set -e
 
-BASE="/data/coinbase-test"
-PRODS="BTC-USD ETH-USD SOL-USD XRP-USD DOGE-USD MON-USD ADA-USD AAVE-USD SUI-USD LINK-USD HBAR-USD"
-BOOK_DEPTH=500
-INTERVAL=1.0
-STAMP=$(date +"%Y%m%d_%H%M%S")
+# Configuration
+PRODUCTS="${PRODUCTS:-XRP-USD}"
+BASE_PATH="${BASE_PATH:-data/coinbase-main}"
+OB_DEPTH="${OB_DEPTH:-200}"
+OB_PERIOD="${OB_PERIOD:-200}"
+VENV="./venv/bin/python"
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-cd "$ROOT"
-source venv/bin/activate
+mkdir -p logs pids
 
-nohup taskset -c 0 python ingest.py --base-path "$BASE" --products $PRODS > "logs/ingest_${STAMP}.log" 2>&1 &
+echo "🚀 Starting Coinbase data pipeline"
+echo "📁 Base path: $BASE_PATH"
+echo "📊 Products: $PRODUCTS"
+FREQ_HZ=$(echo "scale=1; 1000 / $OB_PERIOD" | bc)
+echo "📈 Orderbook: OB${OB_DEPTH}${OB_PERIOD} @ ${OB_PERIOD}ms (${FREQ_HZ}Hz)"
+echo ""
+
+# Start L2 WebSocket ingest
+echo "▶️  Starting L2 ingest..."
+nohup $VENV ws_ingest_daemon.py \
+    --products "$PRODUCTS" \
+    --base-path "$BASE_PATH" \
+    > logs/ingest.log 2>&1 &
 echo $! > pids/ingest.pid
-nohup taskset -c 1 python snapshots.py --base-path "$BASE" --products $PRODS --depth $BOOK_DEPTH --interval $INTERVAL > "logs/snapshots_${STAMP}.log" 2>&1 &
-echo $! > pids/snapshots.pid
+echo "   ✅ L2 ingest started (PID: $(cat pids/ingest.pid))"
 
-echo "Ingest PID: $(cat pids/ingest.pid)"
-echo "Snapshots PID: $(cat pids/snapshots.pid)"
+# Wait for feeds to be created
+echo "⏳ Waiting 1s for L2 feeds..."
+sleep 1
+
+if ! kill -0 $(cat pids/ingest.pid) 2>/dev/null; then
+    echo "❌ L2 ingest failed! Check logs/ingest.log"
+    exit 1
+fi
+
+# Start orderbook daemon
+echo "▶️  Starting orderbook daemon..."
+nohup $VENV orderbook_daemon.py \
+    --products "$PRODUCTS" \
+    --base-path "$BASE_PATH" \
+    --depth "$OB_DEPTH" \
+    --period "$OB_PERIOD" \
+    > logs/orderbook.log 2>&1 &
+echo $! > pids/orderbook.pid
+echo "   ✅ Orderbook daemon started (PID: $(cat pids/orderbook.pid))"
+
+echo ""
+echo "✅ Pipeline running!"
+echo ""
+echo "📊 Monitor:"
+echo "   tail -f logs/ingest.log"
+echo "   tail -f logs/orderbook.log"
+echo ""
+echo "🛑 Stop:"
+echo "   ./stop.sh"
