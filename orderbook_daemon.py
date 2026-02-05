@@ -63,8 +63,8 @@ class OrderBookDaemon:
             stop_evt = threading.Event()
             self._stops[prod] = stop_evt
             t = threading.Thread(target=self._product_loop, args=(prod, stop_evt), name=f"ob-{prod}", daemon=True)
-        self._threads[prod] = t
-        t.start()
+            self._threads[prod] = t
+            t.start()
 
         try:
             while self.running:
@@ -146,18 +146,8 @@ class OrderBookDaemon:
         next_snap = 0
 
         try:
-            # Seed from the latest few seconds (no full backlog) to start fresh
-            seed = reader.latest(seconds=5)
-            if seed:
-                seed = sorted(seed, key=lambda r: r[idx["ev_us"]])
-                for rec in seed:
-                    ev_us = self._process_l2(product, rec, idx)
-                    self.last_l2_ts[product] = ev_us
-                if self.last_l2_ts[product]:
-                    next_snap = self.last_l2_ts[product] + interval_us
-
-            # Live only (no backlog); ingest will get a new snapshot from feed soon
-            for rec in reader.stream_live(playback=False):
+            # Playback True to rebuild book fully before going live
+            for rec in reader.stream_live(playback=True):
                 if stop_evt.is_set():
                     break
                 ev_us = self._process_l2(product, rec, idx)
@@ -196,7 +186,7 @@ class OrderBookDaemon:
         if not bids or not asks:
             return False
 
-        depth = self.product_depth.get(product, self.depth)
+        depth = self.depth
         vals = [b'S', snap_time_us]
         # bids descending
         bcount = 0
@@ -316,9 +306,6 @@ class OrderBookDaemon:
         self.bids.pop(product, None)
         self.asks.pop(product, None)
         self.last_l2_ts.pop(product, None)
-        self.product_depth.pop(product, None)
-        self.product_period.pop(product, None)
-        self.product_interval_us.pop(product, None)
         log.info("Removed product %s", product)
 
 

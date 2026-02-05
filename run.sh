@@ -6,24 +6,25 @@ set -e
 # Configuration (no defaults; must be provided)
 PRODUCTS="${PRODUCTS}"
 BASE_PATH="${BASE_PATH}"
-# ORDERBOOKS format: "depth:period,depth:period" e.g. "200:50,200:200"
-ORDERBOOKS="${ORDERBOOKS}"
+OB_DEPTH="${OB_DEPTH}"
+OB_PERIOD="${OB_PERIOD}"
 VENV="./venv/bin/python"
 INGEST_SOCK="pids/ingest.sock"
+ORDERBOOK_SOCK="pids/orderbook.sock"
 
 mkdir -p logs pids
 
-if [ -z "$PRODUCTS" ] || [ -z "$BASE_PATH" ] || [ -z "$ORDERBOOKS" ]; then
-    echo "Usage: set PRODUCTS, BASE_PATH, ORDERBOOKS env vars."
-    echo "ORDERBOOKS format: \"depth:period,depth:period\""
-    echo "Example: PRODUCTS=\"BTC-USD,XRP-USD\" BASE_PATH=data/coinbase-main ORDERBOOKS=\"200:50,200:200\" ./run.sh"
+if [ -z "$PRODUCTS" ] || [ -z "$BASE_PATH" ] || [ -z "$OB_DEPTH" ] || [ -z "$OB_PERIOD" ]; then
+    echo "Usage: set PRODUCTS, BASE_PATH, OB_DEPTH, OB_PERIOD env vars."
+    echo "Example: PRODUCTS=\"BTC-USD,XRP-USD\" BASE_PATH=data/coinbase-main OB_DEPTH=200 OB_PERIOD=50 ./run.sh"
     exit 1
 fi
 
 echo "🚀 Starting Coinbase data pipeline"
 echo "📁 Base path: $BASE_PATH"
 echo "📊 Products: $PRODUCTS"
-echo "📈 Orderbooks: $ORDERBOOKS"
+FREQ_HZ=$(echo "scale=1; 1000 / $OB_PERIOD" | bc)
+echo "📈 Orderbook: OB${OB_DEPTH}${OB_PERIOD} @ ${OB_PERIOD}ms (${FREQ_HZ}Hz)"
 echo ""
 
 # Start L2 WebSocket ingest
@@ -45,31 +46,24 @@ if ! kill -0 $(cat pids/ingest.pid) 2>/dev/null; then
     exit 1
 fi
 
-IFS=',' read -ra OB_CFG <<< "$ORDERBOOKS"
-ob_index=0
-for cfg in "${OB_CFG[@]}"; do
-    depth=${cfg%%:*}
-    period=${cfg##*:}
-    FREQ_HZ=$(echo "scale=1; 1000 / $period" | bc)
-    echo "▶️  Starting orderbook daemon OB${depth}${period} @ ${period}ms (${FREQ_HZ}Hz)..."
-    nohup $VENV orderbook_daemon.py \
-        --products "$PRODUCTS" \
-        --base-path "$BASE_PATH" \
-        --depth "$depth" \
-        --period "$period" \
-        --control-sock "pids/orderbook_${depth}_${period}.sock" \
-        > "logs/orderbook_${depth}_${period}.log" 2>&1 &
-    echo $! > "pids/orderbook_${depth}_${period}.pid"
-    echo "   ✅ Orderbook daemon started (PID: $(cat pids/orderbook_${depth}_${period}.pid))"
-    ob_index=$((ob_index+1))
-done
+# Start orderbook daemon
+echo "▶️  Starting orderbook daemon..."
+nohup $VENV orderbook_daemon.py \
+    --products "$PRODUCTS" \
+    --base-path "$BASE_PATH" \
+    --depth "$OB_DEPTH" \
+    --period "$OB_PERIOD" \
+    --control-sock "$ORDERBOOK_SOCK" \
+    > logs/orderbook.log 2>&1 &
+echo $! > pids/orderbook.pid
+echo "   ✅ Orderbook daemon started (PID: $(cat pids/orderbook.pid))"
 
 echo ""
 echo "✅ Pipeline running!"
 echo ""
 echo "📊 Monitor:"
 echo "   tail -f logs/ingest.log"
-echo "   tail -f logs/orderbook_*.log"
+echo "   tail -f logs/orderbook.log"
 echo ""
 echo "🛑 Stop:"
 echo "   ./stop.sh"

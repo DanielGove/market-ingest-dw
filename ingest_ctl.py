@@ -31,11 +31,12 @@ def main():
     if args.action in ("sub", "unsub") and not args.product:
         ap.error("product is required for sub/unsub")
 
-    cmd = {
-        "sub": f"SUB {args.product.upper()}",
-        "unsub": f"UNSUB {args.product.upper()}",
-        "list": "LIST",  # not implemented in daemon, will return ERR; kept for symmetry
-    }[args.action]
+    if args.action == "list":
+        cmd = "LIST"
+    elif args.action == "sub":
+        cmd = f"SUB {args.product.upper()}"
+    else:
+        cmd = f"UNSUB {args.product.upper()}"
 
     resp = send(cmd, args.sock)
     print(resp)

@@ -1,18 +1,19 @@
 # Coinbase DW Pipeline
 
-High‑level: one ingest daemon streams Coinbase WS L2 into Deepwater feeds, and N orderbook daemons each build OB feeds at a chosen depth/period for all configured products.
+High‑level: one ingest daemon streams Coinbase WS L2 into Deepwater feeds, and one orderbook daemon builds OB feeds at a chosen depth/period for all configured products (default flow). If you need more OB processes, use `start_ob.sh` manually.
 
 ## Quick start
 ```bash
 # 1) set envs explicitly (no defaults)
 PRODUCTS="XRP-USD,BTC-USD,ETH-USD,SOL-USD" \
 BASE_PATH=data/coinbase-main \
-ORDERBOOKS="200:50,200:200" \
+OB_DEPTH=200 \
+OB_PERIOD=50 \
 ./run.sh
 ```
-- `PRODUCTS`: comma list used by ingest and all orderbook daemons.
+- `PRODUCTS`: comma list used by ingest and the single orderbook daemon.
 - `BASE_PATH`: Deepwater data directory.
-- `ORDERBOOKS`: comma list of `depth:period_ms` pairs; one orderbook daemon is spawned per pair.
+- `OB_DEPTH` / `OB_PERIOD`: depth and period (ms) for the orderbook daemon launched by run.sh.
 
 Stop everything:
 ```bash
@@ -20,23 +21,23 @@ Stop everything:
 ```
 
 ## Control plane (Unix sockets)
-Two sockets live in `pids/`:
-- `pids/ingest.sock` — subscribe/unsubscribe products for L2 ingest.
-- `pids/orderbook_<depth>_<period>.sock` — control each orderbook daemon (add/remove/list products for that depth/period).
+Sockets live in `pids/`:
+- `pids/ingest.sock` — ingest control (SUB/UNSUB/LIST).
+- `pids/orderbook.sock` — single orderbook daemon started by run.sh.
 
 CLI helpers (executable):
 ```bash
 ./ingest_ctl.py sub BTC-USD
 ./ingest_ctl.py unsub BTC-USD
+./ingest_ctl.py list
 
-./ob_ctl.py --sock pids/orderbook_200_50.sock add BTC-USD 200 50
-./ob_ctl.py --sock pids/orderbook_200_50.sock remove BTC-USD
-./ob_ctl.py --sock pids/orderbook_200_50.sock list
+./ob_ctl.py 200-50 add BTC-USD   # if you start extra daemons via start_ob.sh
+./ob_ctl.py 200-50 list
 ```
 
 ## Watching orderbooks
 ```
-./venv/bin/python watch_ob.py --product BTC-USD --depth 200 --period 50
+./venv/bin/python watch_ob.py --product BTC-USD --depth 200 --period 50 --base-path data/coinbase-main
 ```
 Match `depth`/`period` to the orderbook daemon you started (e.g., 200/50 or 200/200).
 
@@ -55,6 +56,11 @@ Quick sanity for multiple feeds:
 ```
 mkdir -p data/coinbase-main && find data/coinbase-main -mindepth 1 -delete
 ```
+
+## Scaling / many books
+- Ingest stays single-process; it handles all `PRODUCTS` and fans out to readers.
+- Orderbooks scale horizontally if you manually start more via `start_ob.sh`; otherwise run.sh launches one OB daemon.
+- All scripts accept a configurable base path (`BASE_PATH` env for run.sh, `--base-path` for watchers/start_ob optional arg).
 
 ## Notes
 - Orderbooks trust L2: no price bounds; levels cleared only on qty=0 and L2 snapshot records.

@@ -150,6 +150,9 @@ class WebSocketIngestDaemon:
                             pid = parts[1].upper()
                             self.engine.unsubscribe(pid)
                             conn.sendall(b"OK\n")
+                        elif cmd == "LIST":
+                            subs = sorted(self.engine.product_ids)
+                            conn.sendall((", ".join(subs) + "\n").encode("ascii"))
                         else:
                             conn.sendall(b"ERR unknown\n")
                     except Exception as e:
