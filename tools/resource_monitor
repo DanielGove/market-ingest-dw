@@ -1,0 +1,65 @@
+#!/bin/bash
+# Periodic resource monitor: process RSS and disk usage.
+# Writes one human-readable line per interval.
+
+set -euo pipefail
+
+BASE_PATH="${BASE_PATH:?set BASE_PATH}"
+RETAIN_DAYS="${RETAIN_DAYS:-10}"
+INTERVAL="${INTERVAL:-60}"
+LOG_DIR="${LOG_DIR:-logs/resource}"
+PID_DIR="${PID_DIR:-pids}"
+PAGESIZE=$(getconf PAGESIZE)
+
+mkdir -p "$LOG_DIR" pids
+
+log_file() {
+  echo "$LOG_DIR/resource-$(date -u +%Y-%m-%d).log"
+}
+
+cleanup_old_logs() {
+  find "$LOG_DIR" -type f -name 'resource-*.log' -mtime +"$RETAIN_DAYS" -delete 2>/dev/null || true
+}
+
+rss_mb() {
+  local pid="$1"
+  if [ -z "$pid" ] || ! [ -r "/proc/$pid/statm" ]; then
+    echo "NA"
+    return
+  fi
+  local rss_pages
+  rss_pages=$(awk '{print $2}' "/proc/$pid/statm")
+  if [ -z "$rss_pages" ]; then
+    echo "NA"
+    return
+  fi
+  local rss_bytes=$((rss_pages * PAGESIZE))
+  printf "%.1f" "$(echo "$rss_bytes / 1048576" | bc -l)"
+}
+
+while true; do
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  lf=$(log_file)
+  ln -sf "$(basename "$lf")" "$LOG_DIR/resource-latest.log"
+
+  ingest_pid=$(cat "$PID_DIR/ingest.pid" 2>/dev/null || true)
+  ob_pid=$(cat "$PID_DIR/orderbook.pid" 2>/dev/null || true)
+  health_pid=$(cat "$PID_DIR/health.pid" 2>/dev/null || true)
+
+  ingest_rss=$(rss_mb "$ingest_pid")
+  ob_rss=$(rss_mb "$ob_pid")
+  health_rss=$(rss_mb "$health_pid")
+
+  # Filesystem usage for BASE_PATH
+  df_line=$(df -Pk "$BASE_PATH" | awk 'NR==2 {print $2, $3, $4, $5}')
+  read -r fs_kb fs_used_kb fs_avail_kb fs_use_pct <<<"$df_line"
+
+  # Base path size (du can be heavier; still acceptable once per minute)
+  base_bytes=$(du -sb "$BASE_PATH" 2>/dev/null | awk '{print $1}')
+  base_mb=$(printf "%.1f" "$(echo "$base_bytes / 1048576" | bc -l)")
+
+  echo "[$ts] ingest_rss_mb=$ingest_rss orderbook_rss_mb=$ob_rss health_rss_mb=$health_rss base_mb=$base_mb fs_used_pct=$fs_use_pct fs_used_gb=$(printf \"%.2f\" \"$(echo \"$fs_used_kb/1048576\" | bc -l)\") fs_avail_gb=$(printf \"%.2f\" \"$(echo \"$fs_avail_kb/1048576\" | bc -l)\")" >> "$lf"
+
+  cleanup_old_logs
+  sleep "$INTERVAL"
+done

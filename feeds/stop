@@ -1,0 +1,33 @@
+#!/bin/bash
+# Stop all pipeline processes (ingest, orderbook, monitors)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PID_DIR="$SCRIPT_DIR/pids"
+
+echo "🛑 Stopping Coinbase data pipeline..."
+
+shopt -s nullglob
+for pidfile in "$PID_DIR"/*.pid; do
+    if [ -f "$pidfile" ]; then
+        pid=$(cat "$pidfile")
+        name=$(basename "$pidfile" .pid)
+        
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "   Stopping $name (PID: $pid)..."
+            kill "$pid"
+            sleep 1
+            
+            # Force kill if still running
+            if kill -0 "$pid" 2>/dev/null; then
+                echo "   Force stopping $name..."
+                kill -9 "$pid"
+            fi
+        fi
+        
+        rm "$pidfile"
+    fi
+done
+shopt -u nullglob
+
+echo "✅ Pipeline stopped"

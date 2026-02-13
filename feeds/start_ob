@@ -1,0 +1,40 @@
+#!/bin/bash
+# Start a single orderbook daemon with its own socket/log/pid.
+# Usage: ./feeds/start_ob <depth> <period_ms> <products> [base_path]
+# Example: ./feeds/start_ob 200 50 "BTC-USD,XRP-USD,ETH-USD" data/coinbase-main
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+DEPTH="$1"
+PERIOD="$2"
+PRODUCTS="$3"
+BASE_PATH="${4:-data/coinbase-main}"
+VENV="$ROOT_DIR/venv/bin/python"
+
+if [ -z "$DEPTH" ] || [ -z "$PERIOD" ] || [ -z "$PRODUCTS" ]; then
+  echo "Usage: $0 <depth> <period_ms> <products> [base_path]"
+  exit 1
+fi
+
+LOG_DIR="$SCRIPT_DIR/logs"
+PID_DIR="$SCRIPT_DIR/pids"
+mkdir -p "$LOG_DIR" "$PID_DIR"
+
+SOCK="$PID_DIR/orderbook_${DEPTH}_${PERIOD}.sock"
+LOG="$LOG_DIR/orderbook_${DEPTH}_${PERIOD}.log"
+PIDFILE="$PID_DIR/orderbook_${DEPTH}_${PERIOD}.pid"
+
+echo "▶️  Starting orderbook daemon OB${DEPTH}${PERIOD} for ${PRODUCTS}..."
+nohup $VENV "$SCRIPT_DIR/orderbook_daemon.py" \
+  --products "$PRODUCTS" \
+  --base-path "$BASE_PATH" \
+  --depth "$DEPTH" \
+  --period "$PERIOD" \
+  --control-sock "$SOCK" \
+  > "$LOG" 2>&1 &
+
+echo $! > "$PIDFILE"
+echo "   ✅ PID: $(cat $PIDFILE)  sock: $SOCK  log: $LOG"

@@ -1,0 +1,45 @@
+{
+  "config": {
+    "base_path": "/home/ocean-man/projects/coinbase-dw/data/coinbase-main",
+    "depth": 200,
+    "execution_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "fee_bps": 1.0,
+    "intent_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "latency_ms": 0.5,
+    "maker_fee_bps": 0.0,
+    "manifest_path": "/home/ocean-man/projects/coinbase-dw/out/backtest/PH4TAKER/engine-manifest.json",
+    "period": 50,
+    "product": "BTC-USD",
+    "reverse_latency_ms": 0.5,
+    "run_id": "PH4TAKER",
+    "seconds": 120,
+    "strategy": "backtest.taker_pulse:TakerPulse",
+    "strict_contracts": true
+  },
+  "git_commit": "ad598fb453c0f272c55801075e38eecd3933b760",
+  "run_id": "PH4TAKER",
+  "summary": {
+    "events": 47535,
+    "execution_feed": {
+      "checksum": "ac378751116d8a927bbe31ef9a2436b2895eb81ca384aea1e6071bf972e3a169",
+      "records": 4214
+    },
+    "intent_feed": {
+      "checksum": "e9df83feeafb8b81c7f2d14321110e485ccfc38590706aa297df962ef9e0ea99",
+      "records": 2400
+    },
+    "pnl": -1702.0015379139518,
+    "position": 0.026000000000000016,
+    "saw_snapshot": true,
+    "status_counts": {
+      "ack": 1814,
+      "cancel": 586,
+      "fill": 1814
+    },
+    "stream_checksum": "2df22412ed453a4df0993452b35e190ee4b177b4cd27e2868ffa030aafcab96e"
+  },
+  "window": {
+    "end_event_us": 1770964243216957,
+    "start_event_us": 1770964123396485
+  }
+}

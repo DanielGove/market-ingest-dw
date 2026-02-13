@@ -1,0 +1,45 @@
+{
+  "config": {
+    "base_path": "/home/ocean-man/projects/coinbase-dw/data/coinbase-main",
+    "depth": 200,
+    "execution_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "fee_bps": 1.0,
+    "intent_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "latency_ms": 0.5,
+    "maker_fee_bps": 0.0,
+    "manifest_path": "/home/ocean-man/projects/coinbase-dw/out/backtest/PH4REG/engine-manifest.json",
+    "period": 50,
+    "product": "BTC-USD",
+    "reverse_latency_ms": 0.5,
+    "run_id": "PH4REG",
+    "seconds": 1,
+    "strategy": "ping_pong",
+    "strict_contracts": true
+  },
+  "git_commit": "ad598fb453c0f272c55801075e38eecd3933b760",
+  "run_id": "PH4REG",
+  "summary": {
+    "events": 640,
+    "execution_feed": {
+      "checksum": "b107dfa772678719d52901ac2faa08df1c1ef7574ebf9a7dd777f17978a89eba",
+      "records": 66
+    },
+    "intent_feed": {
+      "checksum": "b115989ff642fbd0b874b627a25f759ce206a970591255aaf016570965311117",
+      "records": 36
+    },
+    "pnl": 0.0,
+    "position": 0.0,
+    "saw_snapshot": true,
+    "status_counts": {
+      "ack": 30,
+      "cancel": 6,
+      "reject": 30
+    },
+    "stream_checksum": "adfcce563b2d1a2b2df9d05f95e3894032cb1fb992b0b9466d7eceb726782e76"
+  },
+  "window": {
+    "end_event_us": 1770964299491745,
+    "start_event_us": 1770964298645830
+  }
+}

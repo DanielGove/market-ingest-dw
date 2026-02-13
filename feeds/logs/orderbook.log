@@ -1,0 +1,6 @@
+2026-02-12 12:26:02 [INFO] orderbook: Starting OB daemon products=['BTC-USD', 'ETH-USD', 'SOL-USD', 'XRP-USD'] depth=200 period_ms=50
+2026-02-12 12:26:02 [INFO] orderbook: Orderbook control socket at /home/ocean-man/projects/coinbase-dw/feeds/pids/orderbook.sock
+2026-02-12 12:26:02 [INFO] orderbook: Created product BTC-USD feeds (OB20050-BTC-USD)
+2026-02-12 12:26:02 [INFO] orderbook: Created product ETH-USD feeds (OB20050-ETH-USD)
+2026-02-12 12:26:02 [INFO] orderbook: Created product SOL-USD feeds (OB20050-SOL-USD)
+2026-02-12 12:26:02 [INFO] orderbook: Created product XRP-USD feeds (OB20050-XRP-USD)

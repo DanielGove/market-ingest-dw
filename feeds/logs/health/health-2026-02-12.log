@@ -1,0 +1,8 @@
+[2026-02-12T17:26:02Z] product=BTC-USD status=no_records window_s=60
+[2026-02-12T17:26:02Z] product=BTC-USD feed=trades window_s=60 samples=100 lag_ms_p50=1316.5 lag_ms_p90=4151.5 lag_ms_p99=6377.5 lag_ms_min=625.5 lag_ms_max=6377.5 packet_breaks=0 recv_breaks=0 proc_breaks=0 ev_breaks=0 cross_breaks=0 packet_p50=1770917162023580.0 recv_p50=1770917162428893.0 proc_p50=1770917162429029.0 ev_p50=1770917161112413.0 runtime_ms=3.1
+[2026-02-12T17:26:02Z] product=ETH-USD status=no_records window_s=60
+[2026-02-12T17:26:02Z] product=ETH-USD feed=trades window_s=60 samples=100 lag_ms_p50=5476.9 lag_ms_p90=14929.7 lag_ms_p99=14929.7 lag_ms_min=238.6 lag_ms_max=14929.7 packet_breaks=0 recv_breaks=0 proc_breaks=0 ev_breaks=0 cross_breaks=0 packet_p50=1770917162023338.0 recv_p50=1770917162064593.0 proc_p50=1770917162428157.0 ev_p50=1770917156587693.0 runtime_ms=4.7
+[2026-02-12T17:26:02Z] product=SOL-USD status=no_records window_s=60
+[2026-02-12T17:26:02Z] product=SOL-USD feed=trades window_s=60 samples=102 lag_ms_p50=15573.8 lag_ms_p90=38831.2 lag_ms_p99=41454.3 lag_ms_min=1074.7 lag_ms_max=41887.2 packet_breaks=0 recv_breaks=0 proc_breaks=0 ev_breaks=0 cross_breaks=0 packet_p50=1770917162024084.0 recv_p50=1770917162429960.0 proc_p50=1770917162430032.0 ev_p50=1770917146856165.5 runtime_ms=2.9
+[2026-02-12T17:26:02Z] product=XRP-USD status=no_records window_s=60
+[2026-02-12T17:26:02Z] product=XRP-USD feed=trades window_s=60 samples=104 lag_ms_p50=10734.7 lag_ms_p90=22341.5 lag_ms_p99=25497.0 lag_ms_min=482.0 lag_ms_max=25513.1 packet_breaks=0 recv_breaks=0 proc_breaks=0 ev_breaks=0 cross_breaks=0 packet_p50=1770917162023832.0 recv_p50=1770917162429455.0 proc_p50=1770917162429539.0 ev_p50=1770917151694756.0 runtime_ms=4.8

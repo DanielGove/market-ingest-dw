@@ -1,0 +1,44 @@
+{
+  "config": {
+    "base_path": "/home/ocean-man/projects/coinbase-dw/data/coinbase-main",
+    "depth": 200,
+    "execution_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "fee_bps": 1.0,
+    "intent_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "latency_ms": 0.5,
+    "maker_fee_bps": 0.0,
+    "manifest_path": "/home/ocean-man/projects/coinbase-dw/out/backtest/NUKE1/engine-manifest.json",
+    "period": 50,
+    "product": "BTC-USD",
+    "reverse_latency_ms": 0.5,
+    "run_id": "NUKE1",
+    "seconds": 1,
+    "strategy": "ping_pong",
+    "strict_contracts": true
+  },
+  "git_commit": "ad598fb453c0f272c55801075e38eecd3933b760",
+  "run_id": "NUKE1",
+  "summary": {
+    "events": 645,
+    "execution_feed": {
+      "checksum": "4b8077405359eef4d95f4a585fcbc27a4a67c29f23df886764cef57356bd6b06",
+      "records": 68
+    },
+    "intent_feed": {
+      "checksum": "c16420c3969033767f9b8498b6eea6479663549950abbd0dc76bba7e8ce7e478",
+      "records": 40
+    },
+    "pnl": 0.0,
+    "position": 0.0,
+    "saw_snapshot": true,
+    "status_counts": {
+      "ack": 28,
+      "cancel": 40
+    },
+    "stream_checksum": "767d47d13adc352a1d6cb7ed69a1d6e71e10dee4be81155f6753f3214c1a0e01"
+  },
+  "window": {
+    "end_event_us": 1770965947153748,
+    "start_event_us": 1770965946261145
+  }
+}

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# One-time setup for coinbase-dw on a fresh clone.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+echo "==> Ensuring virtualenv"
+if [ ! -d venv ]; then
+  python3 -m venv venv
+fi
+
+echo "==> Installing requirements"
+./venv/bin/pip install --upgrade pip >/dev/null
+./venv/bin/pip install -r requirements.txt
+
+echo "==> Marking helper scripts executable"
+chmod +x setup_env tools/health_check tools/resource_monitor \
+  feeds/run feeds/stop feeds/start_ob \
+  feeds/ingest_ctl.py feeds/ob_ctl.py feeds/watch_ob.py \
+  feeds/ws_ingest_daemon.py feeds/orderbook_daemon.py
+
+echo "==> Done. Start pipeline with:"
+echo "    ./feeds/run"
+echo "  Control sockets (after feeds/run):"
+echo "    ./feeds/ingest_ctl.py SUB BTC-USD"
+echo "    ./feeds/ob_ctl.py ADD BTC-USD 200 200"

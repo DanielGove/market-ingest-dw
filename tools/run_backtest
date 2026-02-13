@@ -1,0 +1,128 @@
+#!/bin/bash
+# Unified backtest entrypoint for engine/determinism workflows.
+#
+# Modes:
+#   engine       Run closed-loop engine.
+#   determinism  Run replay determinism check.
+#   all          Run engine -> determinism.
+#
+# Examples:
+#   ./tools/run_backtest engine
+#   PRODUCT=ETH-USD SECONDS=120 STRATEGY=ping_pong ./tools/run_backtest all
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PY="${PY:-$ROOT_DIR/venv/bin/python}"
+MODE="${1:-engine}"
+if [ $# -gt 0 ]; then
+  shift
+fi
+
+if [ ! -x "$PY" ]; then
+  PY="python3"
+fi
+
+BASE_PATH="${BASE_PATH:-$ROOT_DIR/data/coinbase-main}"
+INTENT_BASE_PATH="${INTENT_BASE_PATH:-$ROOT_DIR/data/strategy-intents}"
+EXECUTION_BASE_PATH="${EXECUTION_BASE_PATH:-$INTENT_BASE_PATH}"
+PRODUCT="${PRODUCT:-BTC-USD}"
+DEPTH="${DEPTH:-200}"
+PERIOD="${PERIOD:-50}"
+SECONDS="${SECONDS:-60}"
+STRATEGY="${STRATEGY:-ping_pong}"
+RUN_ID="${RUN_ID:-RUN1}"
+LATENCY_MS="${LATENCY_MS:-0.5}"
+REVERSE_LATENCY_MS="${REVERSE_LATENCY_MS:-0.5}"
+TAKER_FEE_BPS="${TAKER_FEE_BPS:-1.0}"
+MAKER_FEE_BPS="${MAKER_FEE_BPS:-0.0}"
+OUT_DIR="${OUT_DIR:-$ROOT_DIR/out/backtest/$RUN_ID}"
+
+mkdir -p "$INTENT_BASE_PATH" "$EXECUTION_BASE_PATH" "$OUT_DIR"
+MANIFEST_PATH="$OUT_DIR/engine-manifest.json"
+
+print_run_context() {
+  echo "mode=$MODE product=$PRODUCT depth=$DEPTH period=$PERIOD seconds=$SECONDS strategy=$STRATEGY run_id=$RUN_ID"
+  echo "base_path=$BASE_PATH intent_base_path=$INTENT_BASE_PATH execution_base_path=$EXECUTION_BASE_PATH"
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./tools/run_backtest <mode> [extra-args]
+
+Modes:
+  engine       closed-loop replay (strategy + exchange splice + execution feed)
+  determinism  replay same frozen window twice and compare checksums
+  all          engine -> determinism
+
+Key env vars:
+  BASE_PATH, INTENT_BASE_PATH, EXECUTION_BASE_PATH
+  PRODUCT, DEPTH, PERIOD, SECONDS, STRATEGY, RUN_ID
+  LATENCY_MS, REVERSE_LATENCY_MS, TAKER_FEE_BPS, MAKER_FEE_BPS
+  OUT_DIR, PY
+EOF
+}
+
+run_engine() {
+  "$PY" "$ROOT_DIR/backtest/engine.py" \
+    --base-path "$BASE_PATH" \
+    --intent-base-path "$INTENT_BASE_PATH" \
+    --execution-base-path "$EXECUTION_BASE_PATH" \
+    --product "$PRODUCT" \
+    --depth "$DEPTH" \
+    --period "$PERIOD" \
+    --seconds "$SECONDS" \
+    --strategy "$STRATEGY" \
+    --run-id "$RUN_ID" \
+    --latency-ms "$LATENCY_MS" \
+    --reverse-latency-ms "$REVERSE_LATENCY_MS" \
+    --fee-bps "$TAKER_FEE_BPS" \
+    --maker-fee-bps "$MAKER_FEE_BPS" \
+    --manifest-path "$MANIFEST_PATH" \
+    "$@"
+}
+
+run_determinism() {
+  "$PY" "$ROOT_DIR/tools/replay_determinism_check.py" \
+    --base-path "$BASE_PATH" \
+    --product "$PRODUCT" \
+    --depth "$DEPTH" \
+    --period "$PERIOD" \
+    --seconds "$SECONDS" \
+    --strategy "$STRATEGY" \
+    --run-id "$RUN_ID" \
+    --latency-ms "$LATENCY_MS" \
+    --reverse-latency-ms "$REVERSE_LATENCY_MS" \
+    --fee-bps "$TAKER_FEE_BPS" \
+    --maker-fee-bps "$MAKER_FEE_BPS" \
+    "$@"
+}
+
+case "$MODE" in
+  engine)
+    print_run_context
+    run_engine "$@"
+    ;;
+  determinism)
+    print_run_context
+    run_determinism "$@"
+    ;;
+  all)
+    print_run_context
+    run_engine
+    run_determinism
+    ;;
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Unknown mode: $MODE"
+    usage
+    exit 2
+    ;;
+esac
+
+echo "Artifacts directory: $OUT_DIR"

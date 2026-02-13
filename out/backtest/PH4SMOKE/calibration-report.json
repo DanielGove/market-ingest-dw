@@ -1,0 +1,233 @@
+{
+  "config": {
+    "adverse_horizon_snapshots": 20,
+    "base_path": "/home/ocean-man/projects/coinbase-dw/data/coinbase-main",
+    "depth": 200,
+    "execution_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "execution_feed": "STRAT-EXEC-PING_PONG",
+    "intent_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "intent_feed": "STRAT-ORDERS-PING_PONG",
+    "latency_grid_ms": [
+      0.5,
+      1.5
+    ],
+    "maker_fee_bps": 0.0,
+    "maker_hold_grid": [
+      1,
+      2
+    ],
+    "maker_through_grid_bps": [
+      0.5,
+      1.5
+    ],
+    "max_wait_grid_ms": [
+      1000.0
+    ],
+    "period": 50,
+    "product": "BTC-USD",
+    "run_id_filter": "PH4SMOKE",
+    "seconds": 300,
+    "strategy": "ping_pong",
+    "taker_fee_bps": 1.0,
+    "taker_slippage_grid_bps": [
+      0.5,
+      1.5
+    ]
+  },
+  "neutral": {
+    "error_band": {
+      "cancels_abs": 40,
+      "fee_bps_abs": 0.0,
+      "fill_rate_abs": 0.0,
+      "fills_abs": 0,
+      "rejects_abs": 40
+    },
+    "metrics": {
+      "adverse_selection_rate": null,
+      "cancels": 78,
+      "cash_pnl": 0.0,
+      "fee_bps": 0.0,
+      "fees": 0.0,
+      "fill_rate": 0.0,
+      "fills": 0,
+      "gross_notional": 0.0,
+      "mtm_pnl": 0.0,
+      "rejects": 0
+    },
+    "params": {
+      "latency_ms": 0.5,
+      "maker_hold_snapshots": 1,
+      "maker_through_bps": 0.5,
+      "max_wait_ms": 1000.0,
+      "taker_slippage_bps": 0.5
+    },
+    "score": 1.026315789473684
+  },
+  "observed": {
+    "cancels": 38,
+    "cash_pnl": 0.0,
+    "events": 128,
+    "execution_feed": "STRAT-EXEC-PING_PONG",
+    "fee_bps": null,
+    "fees": 0.0,
+    "fill_rate": 0.0,
+    "fills": 0,
+    "final_position": 0.0,
+    "gross_notional": 0.0,
+    "intent_feed": "STRAT-ORDERS-PING_PONG",
+    "intents": 78,
+    "maker_fill_share": null,
+    "maker_fills": 0,
+    "partial_fills": 0,
+    "rejects": 40,
+    "reverse_latency_samples": 128,
+    "reverse_latency_us_p50": 500,
+    "reverse_latency_us_p90": 500,
+    "reverse_latency_us_p99": 500,
+    "strategy_feed_key": "ping_pong",
+    "taker_fill_share": null,
+    "taker_fills": 0,
+    "unknown_liq_fills": 0
+  },
+  "pessimistic": {
+    "error_band": {
+      "cancels_abs": 40,
+      "fee_bps_abs": 0.0,
+      "fill_rate_abs": 0.0,
+      "fills_abs": 0,
+      "rejects_abs": 40
+    },
+    "metrics": {
+      "adverse_selection_rate": null,
+      "cancels": 78,
+      "cash_pnl": 0.0,
+      "fee_bps": 0.0,
+      "fees": 0.0,
+      "fill_rate": 0.0,
+      "fills": 0,
+      "gross_notional": 0.0,
+      "mtm_pnl": 0.0,
+      "rejects": 0
+    },
+    "params": {
+      "latency_ms": 0.5,
+      "maker_hold_snapshots": 1,
+      "maker_through_bps": 0.5,
+      "max_wait_ms": 1000.0,
+      "taker_slippage_bps": 0.5
+    },
+    "score": 1.026315789473684
+  },
+  "top_candidates": [
+    {
+      "metrics": {
+        "adverse_selection_rate": null,
+        "cancels": 78,
+        "cash_pnl": 0.0,
+        "fee_bps": 0.0,
+        "fees": 0.0,
+        "fill_rate": 0.0,
+        "fills": 0,
+        "gross_notional": 0.0,
+        "mtm_pnl": 0.0,
+        "rejects": 0
+      },
+      "params": {
+        "latency_ms": 0.5,
+        "maker_hold_snapshots": 1,
+        "maker_through_bps": 0.5,
+        "max_wait_ms": 1000.0,
+        "taker_slippage_bps": 0.5
+      },
+      "score": 1.026315789473684
+    },
+    {
+      "metrics": {
+        "adverse_selection_rate": null,
+        "cancels": 78,
+        "cash_pnl": 0.0,
+        "fee_bps": 0.0,
+        "fees": 0.0,
+        "fill_rate": 0.0,
+        "fills": 0,
+        "gross_notional": 0.0,
+        "mtm_pnl": 0.0,
+        "rejects": 0
+      },
+      "params": {
+        "latency_ms": 0.5,
+        "maker_hold_snapshots": 2,
+        "maker_through_bps": 0.5,
+        "max_wait_ms": 1000.0,
+        "taker_slippage_bps": 0.5
+      },
+      "score": 1.026315789473684
+    },
+    {
+      "metrics": {
+        "adverse_selection_rate": null,
+        "cancels": 78,
+        "cash_pnl": 0.0,
+        "fee_bps": 0.0,
+        "fees": 0.0,
+        "fill_rate": 0.0,
+        "fills": 0,
+        "gross_notional": 0.0,
+        "mtm_pnl": 0.0,
+        "rejects": 0
+      },
+      "params": {
+        "latency_ms": 0.5,
+        "maker_hold_snapshots": 1,
+        "maker_through_bps": 1.5,
+        "max_wait_ms": 1000.0,
+        "taker_slippage_bps": 0.5
+      },
+      "score": 1.026315789473684
+    },
+    {
+      "metrics": {
+        "adverse_selection_rate": null,
+        "cancels": 78,
+        "cash_pnl": 0.0,
+        "fee_bps": 0.0,
+        "fees": 0.0,
+        "fill_rate": 0.0,
+        "fills": 0,
+        "gross_notional": 0.0,
+        "mtm_pnl": 0.0,
+        "rejects": 0
+      },
+      "params": {
+        "latency_ms": 0.5,
+        "maker_hold_snapshots": 2,
+        "maker_through_bps": 1.5,
+        "max_wait_ms": 1000.0,
+        "taker_slippage_bps": 0.5
+      },
+      "score": 1.026315789473684
+    },
+    {
+      "metrics": {
+        "adverse_selection_rate": null,
+        "cancels": 78,
+        "cash_pnl": 0.0,
+        "fee_bps": 0.0,
+        "fees": 0.0,
+        "fill_rate": 0.0,
+        "fills": 0,
+        "gross_notional": 0.0,
+        "mtm_pnl": 0.0,
+        "rejects": 0
+      },
+      "params": {
+        "latency_ms": 0.5,
+        "maker_hold_snapshots": 1,
+        "maker_through_bps": 0.5,
+        "max_wait_ms": 1000.0,
+        "taker_slippage_bps": 1.5
+      },
+      "score": 1.026315789473684
+    }
+  ]
+}

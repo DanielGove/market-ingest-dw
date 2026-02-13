@@ -1,0 +1,57 @@
+#!/bin/bash
+# Periodic L2 health snapshot (human-readable, 1 line per product).
+# Default: every 60s, 60s window, keep daily logs for 10 days.
+
+set -euo pipefail
+
+PRODUCTS="${PRODUCTS:?set PRODUCTS}"
+BASE_PATH="${BASE_PATH:?set BASE_PATH}"
+# Seconds of history to examine
+WINDOW_SEC="${WINDOW_SEC:-60}"
+# Max records to scan (0 = uncapped)
+MAX_RECORDS="${MAX_RECORDS:-10000}"
+# Interval between runs
+INTERVAL="${INTERVAL:-60}"
+# Days to retain daily log files
+RETAIN_DAYS="${RETAIN_DAYS:-10}"
+# Whether to check trades feeds (1=yes, 0=no)
+CHECK_TRADES="${CHECK_TRADES:-1}"
+
+PY=./venv/bin/python
+LOG_DIR="${LOG_DIR:-logs/health}"
+mkdir -p "$LOG_DIR"
+
+log_file() {
+  echo "$LOG_DIR/health-$(date -u +%Y-%m-%d).log"
+}
+
+cleanup_old_logs() {
+  find "$LOG_DIR" -type f -name 'health-*.log' -mtime +"$RETAIN_DAYS" -delete 2>/dev/null || true
+}
+
+while true; do
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  lf=$(log_file)
+  ln -sf "$(basename "$lf")" "$LOG_DIR/health-latest.log"
+
+  for p in ${PRODUCTS//,/ }; do
+    out=$($PY tools/l2_health_snapshot.py \
+      --base-path "$BASE_PATH" \
+      --product "$p" \
+      --seconds "$WINDOW_SEC" \
+      --max-records "$MAX_RECORDS" 2>&1)
+    echo "[$ts] $out" >> "$lf"
+
+    if [ "$CHECK_TRADES" != "0" ]; then
+      tout=$($PY tools/trade_health_snapshot.py \
+        --base-path "$BASE_PATH" \
+        --product "$p" \
+        --seconds "$WINDOW_SEC" \
+        --max-records "$MAX_RECORDS" 2>&1)
+      echo "[$ts] $tout" >> "$lf"
+    fi
+  done
+
+  cleanup_old_logs
+  sleep "$INTERVAL"
+done
