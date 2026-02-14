@@ -31,3 +31,18 @@
 2026-02-13 03:06:04 [WARNING] dw.ws: WS closed: Connection to remote host was lost.
 2026-02-13 03:06:04 [INFO] dw.ws: Reconnecting in 15.00s
 2026-02-13 03:06:20 [INFO] dw.ws: WS connected wss://advanced-trade-ws.coinbase.com
+2026-02-13 09:05:20 [WARNING] dw.ws: WS closed: WS recv error: [Errno 32] Broken pipe
+2026-02-13 09:05:20 [INFO] dw.ws: Reconnecting in 15.00s
+2026-02-13 09:05:36 [INFO] dw.ws: WS connected wss://advanced-trade-ws.coinbase.com
+2026-02-13 11:28:53 [WARNING] dw.ws: WS closed: Connection to remote host was lost.
+2026-02-13 11:28:53 [INFO] dw.ws: Reconnecting in 15.00s
+2026-02-13 11:29:08 [INFO] dw.ws: WS connected wss://advanced-trade-ws.coinbase.com
+2026-02-13 19:18:23 [WARNING] dw.ws: WS closed: WS recv error: [Errno 101] Network is unreachable
+2026-02-13 19:18:23 [INFO] dw.ws: Reconnecting in 15.00s
+2026-02-13 19:18:38 [INFO] dw.ws: WS connected wss://advanced-trade-ws.coinbase.com
+2026-02-13 20:38:34 [WARNING] dw.ws: WS closed: Connection to remote host was lost.
+2026-02-13 20:38:34 [INFO] dw.ws: Reconnecting in 15.00s
+2026-02-13 20:38:50 [INFO] dw.ws: WS connected wss://advanced-trade-ws.coinbase.com
+2026-02-13 20:44:16 [WARNING] dw.ws: WS closed: Connection to remote host was lost.
+2026-02-13 20:44:16 [INFO] dw.ws: Reconnecting in 15.00s
+2026-02-13 20:44:31 [INFO] dw.ws: WS connected wss://advanced-trade-ws.coinbase.com

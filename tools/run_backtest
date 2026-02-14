@@ -8,7 +8,7 @@
 #
 # Examples:
 #   ./tools/run_backtest engine
-#   PRODUCT=ETH-USD SECONDS=120 STRATEGY=ping_pong ./tools/run_backtest all
+#   WINDOW_SECONDS=120 STRATEGY=ping_pong ./tools/run_backtest all
 
 set -euo pipefail
 
@@ -24,27 +24,16 @@ if [ ! -x "$PY" ]; then
   PY="python3"
 fi
 
-BASE_PATH="${BASE_PATH:-$ROOT_DIR/data/coinbase-main}"
-INTENT_BASE_PATH="${INTENT_BASE_PATH:-$ROOT_DIR/data/strategy-intents}"
-EXECUTION_BASE_PATH="${EXECUTION_BASE_PATH:-$INTENT_BASE_PATH}"
-PRODUCT="${PRODUCT:-BTC-USD}"
-DEPTH="${DEPTH:-200}"
-PERIOD="${PERIOD:-50}"
-SECONDS="${SECONDS:-60}"
+WINDOW_SECONDS="${WINDOW_SECONDS:-60}"
 STRATEGY="${STRATEGY:-ping_pong}"
 RUN_ID="${RUN_ID:-RUN1}"
-LATENCY_MS="${LATENCY_MS:-0.5}"
-REVERSE_LATENCY_MS="${REVERSE_LATENCY_MS:-0.5}"
-TAKER_FEE_BPS="${TAKER_FEE_BPS:-1.0}"
-MAKER_FEE_BPS="${MAKER_FEE_BPS:-0.0}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/out/backtest/$RUN_ID}"
 
-mkdir -p "$INTENT_BASE_PATH" "$EXECUTION_BASE_PATH" "$OUT_DIR"
+mkdir -p "$OUT_DIR"
 MANIFEST_PATH="$OUT_DIR/engine-manifest.json"
 
 print_run_context() {
-  echo "mode=$MODE product=$PRODUCT depth=$DEPTH period=$PERIOD seconds=$SECONDS strategy=$STRATEGY run_id=$RUN_ID"
-  echo "base_path=$BASE_PATH intent_base_path=$INTENT_BASE_PATH execution_base_path=$EXECUTION_BASE_PATH"
+  echo "mode=$MODE seconds=$WINDOW_SECONDS strategy=$STRATEGY run_id=$RUN_ID"
 }
 
 usage() {
@@ -54,49 +43,29 @@ Usage:
 
 Modes:
   engine       closed-loop replay (strategy + exchange splice + execution feed)
-  determinism  replay same frozen window twice and compare checksums
+  determinism  replay same frozen window twice and compare behavioral outputs
   all          engine -> determinism
 
 Key env vars:
-  BASE_PATH, INTENT_BASE_PATH, EXECUTION_BASE_PATH
-  PRODUCT, DEPTH, PERIOD, SECONDS, STRATEGY, RUN_ID
-  LATENCY_MS, REVERSE_LATENCY_MS, TAKER_FEE_BPS, MAKER_FEE_BPS
+  WINDOW_SECONDS, STRATEGY, RUN_ID
   OUT_DIR, PY
 EOF
 }
 
 run_engine() {
   "$PY" "$ROOT_DIR/backtest/engine.py" \
-    --base-path "$BASE_PATH" \
-    --intent-base-path "$INTENT_BASE_PATH" \
-    --execution-base-path "$EXECUTION_BASE_PATH" \
-    --product "$PRODUCT" \
-    --depth "$DEPTH" \
-    --period "$PERIOD" \
-    --seconds "$SECONDS" \
+    --seconds "$WINDOW_SECONDS" \
     --strategy "$STRATEGY" \
     --run-id "$RUN_ID" \
-    --latency-ms "$LATENCY_MS" \
-    --reverse-latency-ms "$REVERSE_LATENCY_MS" \
-    --fee-bps "$TAKER_FEE_BPS" \
-    --maker-fee-bps "$MAKER_FEE_BPS" \
     --manifest-path "$MANIFEST_PATH" \
     "$@"
 }
 
 run_determinism() {
   "$PY" "$ROOT_DIR/tools/replay_determinism_check.py" \
-    --base-path "$BASE_PATH" \
-    --product "$PRODUCT" \
-    --depth "$DEPTH" \
-    --period "$PERIOD" \
-    --seconds "$SECONDS" \
+    --seconds "$WINDOW_SECONDS" \
     --strategy "$STRATEGY" \
     --run-id "$RUN_ID" \
-    --latency-ms "$LATENCY_MS" \
-    --reverse-latency-ms "$REVERSE_LATENCY_MS" \
-    --fee-bps "$TAKER_FEE_BPS" \
-    --maker-fee-bps "$MAKER_FEE_BPS" \
     "$@"
 }
 

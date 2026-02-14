@@ -1,0 +1,51 @@
+{
+  "config": {
+    "base_path": "/home/ocean-man/projects/coinbase-dw/data/coinbase-main",
+    "decision_latency_us": 0,
+    "depth": 200,
+    "execution_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "fee_bps": 1.0,
+    "intent_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
+    "latency_ms": 0.5,
+    "maker_fee_bps": 0.0,
+    "manifest_path": "/home/ocean-man/projects/coinbase-dw/out/backtest/EXSEP1/engine-manifest.json",
+    "period": 50,
+    "playback": false,
+    "product": "BTC-USD",
+    "reverse_latency_ms": 0.5,
+    "run_id": "EXSEP1",
+    "seconds": 5,
+    "strategy": "backtest.taker_pulse:TakerPulse",
+    "strict_contracts": true,
+    "window_end_processed_us": null,
+    "window_start_processed_us": null
+  },
+  "git_commit": "3a7706c00e427703e1e6f77a5aaa44e05e904297",
+  "run_id": "EXSEP1",
+  "summary": {
+    "events": 104,
+    "execution_feed": {
+      "checksum": "bfe8b14383823959422948a1ad8d1135b463f07e2d6f926baa2a58d404b24d91",
+      "records": 2
+    },
+    "intent_feed": {
+      "checksum": "8394015ce010616ef21e2c8aecdac6551463496367f8fd1064b0e68fc5efa1ec",
+      "records": 100
+    },
+    "pnl": -50.747319759120245,
+    "position": 0.00076247,
+    "saw_snapshot": true,
+    "snapshot_events": 100,
+    "status_callbacks": 2,
+    "status_counts": {
+      "FILL": 1,
+      "PARTIAL_FILL": 1
+    },
+    "stream_checksum": "92784b80048b6e99221cbdadd79408415df4effe366cdf1680ceda3b51a57bc9",
+    "trade_events": 4
+  },
+  "window": {
+    "end_processed_us": 1770972989432224,
+    "start_processed_us": 1770972984435813
+  }
+}

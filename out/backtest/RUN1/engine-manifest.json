@@ -1,44 +1,38 @@
 {
   "config": {
-    "base_path": "/home/ocean-man/projects/coinbase-dw/data/coinbase-main",
-    "depth": 200,
-    "execution_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
-    "fee_bps": 1.0,
-    "intent_base_path": "/home/ocean-man/projects/coinbase-dw/data/strategy-intents",
-    "latency_ms": 0.5,
-    "maker_fee_bps": 0.0,
     "manifest_path": "/home/ocean-man/projects/coinbase-dw/out/backtest/RUN1/engine-manifest.json",
-    "period": 50,
-    "product": "BTC-USD",
-    "reverse_latency_ms": 0.5,
+    "output_base_path": null,
     "run_id": "RUN1",
-    "seconds": 1,
+    "seconds": 5,
     "strategy": "ping_pong",
-    "strict_contracts": true
+    "strict_contracts": true,
+    "window_end_processed_us": null,
+    "window_start_processed_us": null
   },
-  "git_commit": "ad598fb453c0f272c55801075e38eecd3933b760",
+  "git_commit": "3a7706c00e427703e1e6f77a5aaa44e05e904297",
   "run_id": "RUN1",
   "summary": {
-    "events": 131,
+    "events": 119,
     "execution_feed": {
-      "checksum": "28e946c530817fbab65fa4fb1ed2b225584858d5d11b536841178a7b37089a36",
-      "records": 62
+      "base_path": "data/strategy-intents",
+      "name": "STRAT-EXEC-PINGPONG",
+      "records": 0
     },
     "intent_feed": {
-      "checksum": "b6108de217026adc8121d97d52ab739e4ca5389240a7893218cde1dbfc89c813",
-      "records": 36
+      "base_path": "data/strategy-intents",
+      "name": "STRAT-ORDERS-PINGPONG",
+      "records": 202
     },
     "pnl": 0.0,
     "position": 0.0,
     "saw_snapshot": true,
-    "status_counts": {
-      "ack": 26,
-      "cancel": 36
-    },
-    "stream_checksum": "cde176705e078f597ef23039de99416a03c1a7cdc01f7d6d6127b298eff7350b"
+    "snapshot_events": 101,
+    "status_callbacks": 0,
+    "status_counts": {},
+    "trade_events": 18
   },
   "window": {
-    "end_event_us": 1770959011601596,
-    "start_event_us": 1770959010798623
+    "end_processed_us": 1771036594851107,
+    "start_processed_us": 1771036589860122
   }
 }

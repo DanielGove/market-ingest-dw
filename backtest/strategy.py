@@ -1,10 +1,48 @@
-"""Strategy boundary validation and normalization.
+"""Strategy contracts and runtime boundary helpers."""
+from dataclasses import dataclass
+from typing import Any, Callable, List, Literal, Optional, Protocol
 
-Phase 1 uses this boundary to keep strategy logic independent of feed/runtime details.
-"""
-from typing import Any, List
+Side = Literal["buy", "sell"]
+TIF = Literal["GTC", "IOC", "FOK", "PO"]
+OrderType = Literal["limit", "market"]
 
-from backtest.interfaces import OrderIntent
+
+@dataclass
+class OrderIntent:
+    side: Side
+    price: float
+    size: float
+    tif: TIF = "PO"
+    order_type: OrderType = "limit"
+    client_tag: str = ""
+    client_id: Optional[str] = None
+    product_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Subscription:
+    feed: str
+    base_path: str
+    method: str
+
+
+OutputRole = Literal["intent"]
+
+
+@dataclass(frozen=True)
+class OutputFeed:
+    role: OutputRole
+    feed: str
+    base_path: str
+    product_id: Optional[str] = None
+
+
+class Strategy(Protocol):
+    def subscriptions(self) -> List[Subscription]:
+        ...
+
+    def outputs(self) -> List[OutputFeed]:
+        ...
 
 
 _VALID_SIDES = {"buy", "sell"}
@@ -24,6 +62,7 @@ def _to_intent(value: Any) -> OrderIntent:
             order_type=value.get("order_type", "limit"),
             client_tag=value.get("client_tag", ""),
             client_id=value.get("client_id"),
+            product_id=value.get("product_id"),
         )
     raise TypeError(f"strategy must return OrderIntent|dict, got {type(value).__name__}")
 
@@ -56,14 +95,8 @@ def normalize_snapshot_output(raw: Any, strict_contracts: bool = True) -> List[O
     return intents
 
 
-def call_strategy_on_snapshot(strategy: Any, snapshot: tuple, meta: dict, strict_contracts: bool = True) -> List[OrderIntent]:
-    if not hasattr(strategy, "on_snapshot"):
-        raise TypeError("strategy is missing on_snapshot(snapshot, meta)")
-    raw = strategy.on_snapshot(snapshot, meta)
-    return normalize_snapshot_output(raw, strict_contracts=strict_contracts)
-
-
-def call_strategy_on_status(strategy: Any, status: dict) -> None:
-    cb = getattr(strategy, "on_status", None)
-    if cb is not None:
-        cb(status)
+def resolve_strategy_method(strategy: Any, method: str) -> Callable[[tuple], Any]:
+    cb = getattr(strategy, method, None)
+    if not callable(cb):
+        raise TypeError(f"strategy is missing method '{method}(record)'")
+    return cb

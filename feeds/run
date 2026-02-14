@@ -14,15 +14,11 @@ OB_PERIOD="${OB_PERIOD:-50}"
 
 VENV="$ROOT_DIR/venv/bin/python"
 LOG_DIR="$SCRIPT_DIR/logs"
-HEALTH_LOG_DIR="$LOG_DIR/health"
-RESOURCE_LOG_DIR="$LOG_DIR/resource"
 PID_DIR="$SCRIPT_DIR/pids"
 INGEST_SOCK="$PID_DIR/ingest.sock"
 ORDERBOOK_SOCK="$PID_DIR/orderbook.sock"
-HEALTH_PIDFILE="$PID_DIR/health.pid"
-RESOURCE_PIDFILE="$PID_DIR/resource.pid"
 
-mkdir -p "$LOG_DIR" "$HEALTH_LOG_DIR" "$RESOURCE_LOG_DIR" "$PID_DIR"
+mkdir -p "$LOG_DIR" "$PID_DIR"
 cd "$ROOT_DIR"
 mkdir -p "$BASE_PATH"
 mkdir -p "$BASE_PATH"
@@ -65,29 +61,12 @@ PYTHONPATH="$ROOT_DIR" nohup $VENV "$SCRIPT_DIR/orderbook_daemon.py" \
 echo $! > "$PID_DIR/orderbook.pid"
 echo "   ✅ Orderbook daemon started (PID: $(cat "$PID_DIR/orderbook.pid"))"
 
-# Start health monitor (60s cadence, 60s window)
-echo "▶️  Starting health monitor..."
-PRODUCTS="$PRODUCTS" BASE_PATH="$BASE_PATH" LOG_DIR="$HEALTH_LOG_DIR" \
-INTERVAL=60 WINDOW_SEC=60 RETAIN_DAYS=10 nohup "$ROOT_DIR/tools/health_check" \
-    > "$HEALTH_LOG_DIR/health-latest.log" 2>&1 &
-echo $! > "$HEALTH_PIDFILE"
-echo "   ✅ Health monitor started (PID: $(cat $HEALTH_PIDFILE))"
-
-# Start resource monitor (60s cadence)
-echo "▶️  Starting resource monitor..."
-BASE_PATH="$BASE_PATH" LOG_DIR="$RESOURCE_LOG_DIR" PID_DIR="$PID_DIR" INTERVAL=60 RETAIN_DAYS=10 nohup "$ROOT_DIR/tools/resource_monitor" \
-    > "$RESOURCE_LOG_DIR/resource-latest.log" 2>&1 &
-echo $! > "$RESOURCE_PIDFILE"
-echo "   ✅ Resource monitor started (PID: $(cat $RESOURCE_PIDFILE))"
-
 echo ""
 echo "✅ Pipeline running!"
 echo ""
 echo "📊 Monitor:"
 echo "   tail -f feeds/logs/ingest.log"
 echo "   tail -f feeds/logs/orderbook.log"
-echo "   tail -f feeds/logs/health/health-latest.log"
-echo "   tail -f feeds/logs/resource/resource-latest.log"
 echo ""
 echo "🛑 Stop:"
 echo "   ./feeds/stop"
