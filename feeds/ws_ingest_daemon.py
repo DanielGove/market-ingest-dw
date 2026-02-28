@@ -147,6 +147,28 @@ class WebSocketIngestDaemon:
                         elif cmd == "LIST":
                             subs = sorted(self.engine.product_ids)
                             conn.sendall((", ".join(subs) + "\n").encode("ascii"))
+                        elif cmd == "ROLL" and len(parts) in (1, 2):
+                            target = parts[1].upper() if len(parts) == 2 and parts[1].upper() != "ALL" else None
+                            result = self.engine.request_segment_roll(target, timeout_s=3.0)
+                            if result.get("status") == "ok":
+                                conn.sendall(
+                                    (
+                                        "OK target={target} trades_closed={trades_closed} l2_closed={l2_closed} "
+                                        "missing={missing}\n"
+                                    ).format(
+                                        target=result.get("target", "ALL"),
+                                        trades_closed=result.get("trades_closed", 0),
+                                        l2_closed=result.get("l2_closed", 0),
+                                        missing=",".join(result.get("missing", [])),
+                                    ).encode("ascii", "ignore")
+                                )
+                            else:
+                                conn.sendall(
+                                    ("ERR status={status} target={target}\n").format(
+                                        status=result.get("status", "error"),
+                                        target=result.get("target", "ALL"),
+                                    ).encode("ascii", "ignore")
+                                )
                         else:
                             conn.sendall(b"ERR unknown\n")
                     except Exception as e:

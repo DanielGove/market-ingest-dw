@@ -5,6 +5,8 @@ Usage:
   ./feeds/ob_ctl.py add BTC-USD
   ./feeds/ob_ctl.py remove BTC-USD
   ./feeds/ob_ctl.py list
+  ./feeds/ob_ctl.py roll
+  ./feeds/ob_ctl.py roll BTC-USD
   ./feeds/ob_ctl.py 200-50 list
 By default targets socket pids/orderbook.sock (override with --sock).
 """
@@ -43,6 +45,8 @@ def main():
     p_rm.add_argument("product")
 
     sub.add_parser("list", help="List products")
+    p_roll = sub.add_parser("roll", help="Close current segment(s)")
+    p_roll.add_argument("product", nargs="?", help="Optional product; omit for all products on target socket")
 
     ap.add_argument("--sock", help="Override socket path (otherwise derived from target)")
     args = ap.parse_args()
@@ -61,6 +65,8 @@ def main():
         cmd = f"ADD {args.product.upper()} 0 0"  # depth/period unused by daemon; provided in target daemon config
     elif args.action == "remove":
         cmd = f"REMOVE {args.product.upper()}"
+    elif args.action == "roll":
+        cmd = f"ROLL {args.product.upper()}" if args.product else "ROLL"
     else:
         cmd = "LIST"
 

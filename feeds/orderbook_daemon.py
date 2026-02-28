@@ -51,6 +51,7 @@ class OrderBookDaemon:
         self.platform = None
         self.readers = {}
         self.writers = {}
+        self.writer_locks = {}
         self.field_idx = {}
         self.bid_keys = {}
         self.bid_qtys = {}
@@ -158,6 +159,7 @@ class OrderBookDaemon:
                 raise
 
         self.writers[product] = self.platform.create_writer(feed_name)
+        self.writer_locks[product] = threading.Lock()
         rec_fmt = self.writers[product].record_format["fmt"]
         rec_size = struct.calcsize(rec_fmt)
         payload = bytearray(rec_size)
@@ -334,7 +336,12 @@ class OrderBookDaemon:
         payload = self.snap_payloads[product]
         try:
             self._HEADER_STRUCT.pack_into(payload, 0, source_event_us, time.time_ns(), b'S')
-            writer.write(source_event_us, payload)
+            lock = self.writer_locks.get(product)
+            if lock is None:
+                writer.write(source_event_us, payload)
+            else:
+                with lock:
+                    writer.write(source_event_us, payload)
         except Exception as e:
             log.error("write error %s: %s", product, e, exc_info=True)
             return False
@@ -384,6 +391,18 @@ class OrderBookDaemon:
                             with self._lock:
                                 prods = ",".join(self.products)
                             conn.sendall(f"{prods}\n".encode())
+                        elif cmd == "ROLL" and len(parts) in (1, 2):
+                            target = parts[1].upper() if len(parts) == 2 and parts[1].upper() != "ALL" else None
+                            out = self._roll_segments(target)
+                            conn.sendall(
+                                (
+                                    "OK target={target} closed={closed} missing={missing}\n"
+                                ).format(
+                                    target=out["target"],
+                                    closed=out["closed"],
+                                    missing=",".join(out["missing"]),
+                                ).encode("ascii", "ignore")
+                            )
                         else:
                             conn.sendall(b"ERR unknown\n")
                     except Exception as e:
@@ -449,7 +468,40 @@ class OrderBookDaemon:
                 view.release()
             except Exception:
                 pass
+        self.writer_locks.pop(product, None)
         log.info("Removed product %s", product)
+
+    def _roll_segments(self, target: str | None) -> dict:
+        with self._lock:
+            if target is None:
+                products = list(self.products)
+            else:
+                products = [target]
+
+        closed = 0
+        missing: list[str] = []
+        for product in products:
+            writer = self.writers.get(product)
+            if writer is None:
+                missing.append(product)
+                continue
+            lock = self.writer_locks.get(product)
+            try:
+                if lock is None:
+                    did_close = writer.segment_store.close_open_segment("manual_roll")
+                else:
+                    with lock:
+                        did_close = writer.segment_store.close_open_segment("manual_roll")
+                if did_close:
+                    closed += 1
+            except Exception:
+                missing.append(product)
+
+        return {
+            "target": target or "ALL",
+            "closed": closed,
+            "missing": missing,
+        }
 
 
 def main():

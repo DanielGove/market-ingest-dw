@@ -112,6 +112,8 @@ class MarketDataEngine:
         self.platform = Platform(base_path="data/coinbase-test")
         self.trade_writers: Dict[str, Any] = {}
         self.book_writers:  Dict[str, Any] = {}
+        self._roll_lock = threading.Lock()
+        self._roll_requests: list[tuple[Optional[str], threading.Event, dict]] = []
 
         self._parser = _JSONParser()
 
@@ -185,8 +187,107 @@ class MarketDataEngine:
     def list_products(self) -> list[str]:
         return sorted(self.product_ids)
 
+    def request_segment_roll(self, product_id: Optional[str] = None, timeout_s: float = 3.0) -> dict:
+        """
+        Request a segment roll from the IO thread.
+        product_id=None rolls all currently known products.
+        """
+        target = product_id.upper() if product_id else None
+        done = threading.Event()
+        result: dict[str, Any] = {}
+        with self._roll_lock:
+            self._roll_requests.append((target, done, result))
+        # Fallback path if IO thread is not alive.
+        if not (self.io_thread and self.io_thread.is_alive()):
+            self._process_roll_requests()
+        if not done.wait(timeout=max(0.1, float(timeout_s))):
+            return {"status": "timeout", "target": target or "ALL"}
+        return result
+
     def is_connected(self) -> bool:
         return self._ws is not None
+
+    def _process_roll_requests(self) -> None:
+        with self._roll_lock:
+            pending = self._roll_requests
+            self._roll_requests = []
+        if not pending:
+            return
+        for target, done, result in pending:
+            try:
+                out = self._roll_segments(target)
+            except Exception as e:
+                out = {"status": "error", "target": target or "ALL", "error": str(e)}
+            result.update(out)
+            done.set()
+
+    def _roll_segments(self, target: Optional[str]) -> dict:
+        known = set(self.trade_writers.keys()) | set(self.book_writers.keys())
+        if target is None:
+            products = sorted(known)
+        else:
+            products = [target]
+        trades_closed = 0
+        l2_closed = 0
+        missing: list[str] = []
+        for pid in products:
+            tw = self.trade_writers.get(pid)
+            bw = self.book_writers.get(pid)
+            if tw is None and bw is None:
+                missing.append(pid)
+                continue
+            if tw is not None and self._mark_writer_boundary(tw, "manual_roll"):
+                trades_closed += 1
+            if bw is not None and self._mark_writer_boundary(bw, "manual_roll"):
+                l2_closed += 1
+        return {
+            "status": "ok",
+            "target": target or "ALL",
+            "products": products,
+            "trades_closed": trades_closed,
+            "l2_closed": l2_closed,
+            "missing": missing,
+        }
+
+    @staticmethod
+    def _mark_writer_boundary(writer: Any, reason: str) -> bool:
+        mark = getattr(writer, "mark_segment_boundary", None)
+        if callable(mark):
+            return bool(mark(reason))
+        store = getattr(writer, "segment_store", None)
+        if store is not None:
+            return bool(store.close_open_segment(reason))
+        return False
+
+    def _mark_disconnect_boundaries(self, reason: str) -> None:
+        trades_closed = 0
+        l2_closed = 0
+        errors = 0
+
+        for pid, writer in self.trade_writers.items():
+            try:
+                if self._mark_writer_boundary(writer, reason):
+                    trades_closed += 1
+            except Exception as e:
+                errors += 1
+                log.warning("trade boundary mark failed for %s (%s): %s", pid, reason, e)
+
+        for pid, writer in self.book_writers.items():
+            try:
+                if self._mark_writer_boundary(writer, reason):
+                    l2_closed += 1
+            except Exception as e:
+                errors += 1
+                log.warning("l2 boundary mark failed for %s (%s): %s", pid, reason, e)
+
+        if trades_closed or l2_closed or errors:
+            log.info(
+                "Segment boundary reason=%s trades_closed=%d l2_closed=%d errors=%d",
+                reason,
+                trades_closed,
+                l2_closed,
+                errors,
+            )
     
     # ---- internals ----
 
@@ -204,6 +305,8 @@ class MarketDataEngine:
             skip_utf8_validation=True,
         )
         self._ws.settimeout(2.0)
+        # Reset heartbeat age on every fresh connection attempt.
+        self._hb_last = time.monotonic()
 
     def _send_subscribe(self, product_ids) -> None:
         if self._ws is None: return
@@ -234,8 +337,6 @@ class MarketDataEngine:
 
         trade_writers = self.trade_writers
         book_writers = self.book_writers
-        pad6 = b""
-        pad14 = b""
 
         for delay in _backoff():
             if not self._should_run:
@@ -246,21 +347,25 @@ class MarketDataEngine:
                 self._send_subscribe(self.product_ids)
 
                 while self._should_run:
+                    self._process_roll_requests()
                     try:
                         raw = self._ws.recv()
                         if not raw:
                             raise WebSocketConnectionClosedException("recv returned None/empty")
                         recv_us = now_us()
+                        # Any inbound frame proves socket liveness, even if heartbeat frames are delayed.
+                        self._hb_last = time.monotonic()
                     except WebSocketTimeoutException:
-                        # treat as liveness issue; fall through to timeout checks below
-                        raw = None
+                        hb_age = time.monotonic() - self._hb_last
+                        if hb_age > self._hb_timeout:
+                            raise WebSocketConnectionClosedException(
+                                f"heartbeat timeout ({hb_age:.1f}s > {self._hb_timeout:.1f}s)"
+                            )
+                        continue
                     except WebSocketConnectionClosedException:
                         raise
                     except Exception as e:
                         raise WebSocketConnectionClosedException(f"WS recv error: {e!s}")
-
-                    if raw is None:
-                        continue
 
                     try:
                         doc = parser.parse(raw).as_dict()
@@ -344,8 +449,10 @@ class MarketDataEngine:
 
             except WebSocketConnectionClosedException as e:
                 log.warning("WS closed: %s", e)
+                self._mark_disconnect_boundaries("ws_disconnect")
             except Exception as e:
                 log.error("WS ERROR: %s", e, exc_info=True)
+                self._mark_disconnect_boundaries("ws_error")
             finally:
                 # Clean up socket only; do NOT recursively restart here
                 if self._ws is not None:
