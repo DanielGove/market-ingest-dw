@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PID_DIR="$SCRIPT_DIR/pids"
+WINDOW="${WINDOW:-60}"
+SHOW_HEALTH=1
+
+if [ "${1:-}" = "--no-health" ]; then
+  SHOW_HEALTH=0
+fi
+
+is_alive() {
+  local name="$1"
+  local pidfile="$PID_DIR/$name.pid"
+  if [ ! -f "$pidfile" ]; then
+    return 1
+  fi
+  local pid
+  pid="$(cat "$pidfile")"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 1
+  fi
+  local cmd
+  cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  case "$name" in
+    ingest) [[ "$cmd" == *"ws_ingest_daemon.py"* ]] ;;
+    orderbook) [[ "$cmd" == *"orderbook_daemon.py"* || "$cmd" == *"/feeds/orderbook_manager"* ]] ;;
+    supervise) [[ "$cmd" == *"/feeds/supervise"* ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+ok=1
+echo "service status:"
+for svc in ingest orderbook supervise; do
+  if is_alive "$svc"; then
+    echo "  $svc: running pid=$(cat "$PID_DIR/$svc.pid")"
+  else
+    echo "  $svc: down"
+    if [ "$svc" != "supervise" ]; then
+      ok=0
+    fi
+  fi
+done
+
+echo ""
+echo "control sockets:"
+if [ -S "$PID_DIR/ingest.sock" ]; then
+  echo -n "  ingest products: "
+  ingest_out="$("$ROOT_DIR/venv/bin/python" "$SCRIPT_DIR/ingest_ctl.py" list 2>/dev/null || true)"
+  if [ -n "$ingest_out" ]; then
+    echo "$ingest_out"
+  else
+    echo "socket present but not responding"
+  fi
+else
+  echo "  ingest products: socket missing"
+fi
+
+if [ -S "$PID_DIR/orderbook.sock" ]; then
+  ob_out="$("$ROOT_DIR/venv/bin/python" - <<'PY' "$PID_DIR/orderbook.sock" 2>/dev/null || true
+import socket, sys
+sock_path = sys.argv[1]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sock_path)
+s.sendall(b"LIST\n")
+print(s.recv(2048).decode("ascii", "ignore").strip())
+s.close()
+PY
+)"
+  echo -n "  orderbook products: "
+  if [ -n "$ob_out" ]; then
+    echo "$ob_out"
+  else
+    echo "socket present but not responding"
+  fi
+else
+  shopt -s nullglob
+  ob_socks=("$PID_DIR"/orderbook_*.sock)
+  shopt -u nullglob
+  if [ "${#ob_socks[@]}" -gt 0 ]; then
+    ob_out="$("$ROOT_DIR/venv/bin/python" - <<'PY' "${ob_socks[@]}" 2>/dev/null || true
+import socket, sys
+products = set()
+for sock_path in sys.argv[1:]:
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(sock_path)
+        s.sendall(b"LIST\n")
+        data = s.recv(4096).decode("ascii", "ignore").strip()
+        s.close()
+        for p in data.split(","):
+            p = p.strip()
+            if p:
+                products.add(p)
+    except Exception:
+        pass
+print(",".join(sorted(products)))
+PY
+)"
+    echo -n "  orderbook products: "
+    if [ -n "$ob_out" ]; then
+      echo "$ob_out"
+    else
+      echo "worker sockets present but not responding"
+    fi
+  else
+    echo "  orderbook products: socket missing"
+  fi
+fi
+
+if [ "$SHOW_HEALTH" -eq 1 ]; then
+  echo ""
+  echo "feed health (window=${WINDOW}s):"
+  "$ROOT_DIR/tools/feed_health" --window "$WINDOW" --once --hide-idle || ok=0
+fi
+
+exit "$(( ok == 1 ? 0 : 1 ))"

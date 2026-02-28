@@ -2,10 +2,11 @@
 """
 CLI helper to control a specific orderbook daemon.
 Usage:
-  ./feeds/ob_ctl.py 200-50 add BTC-USD
-  ./feeds/ob_ctl.py 200-50 remove BTC-USD
+  ./feeds/ob_ctl.py add BTC-USD
+  ./feeds/ob_ctl.py remove BTC-USD
+  ./feeds/ob_ctl.py list
   ./feeds/ob_ctl.py 200-50 list
-By default targets socket pids/orderbook_200_50.sock (override with --sock).
+By default targets socket pids/orderbook.sock (override with --sock).
 """
 import argparse
 import socket
@@ -32,7 +33,7 @@ def parse_target(target: str, base_dir: Path) -> str:
 
 def main():
     ap = argparse.ArgumentParser(description="Control orderbook daemon")
-    ap.add_argument("target", help="Depth-period selector, e.g., 200-50")
+    ap.add_argument("target", nargs="?", default="", help="Optional depth-period selector, e.g., 200-50")
     sub = ap.add_subparsers(dest="action", required=True)
 
     p_add = sub.add_parser("add", help="Add product")
@@ -49,7 +50,12 @@ def main():
     script_dir = Path(__file__).resolve().parent
     pid_dir = script_dir / "pids"
 
-    sock_path = args.sock or parse_target(args.target, pid_dir)
+    if args.sock:
+        sock_path = args.sock
+    elif args.target:
+        sock_path = parse_target(args.target, pid_dir)
+    else:
+        sock_path = str(pid_dir / "orderbook.sock")
 
     if args.action == "add":
         cmd = f"ADD {args.product.upper()} 0 0"  # depth/period unused by daemon; provided in target daemon config

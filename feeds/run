@@ -1,72 +1,69 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Start Coinbase data pipeline: L2 ingest + orderbook construction
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Defaults (overridable via env)
-PRODUCTS="${PRODUCTS:-BTC-USD,ETH-USD,SOL-USD,XRP-USD}"
-BASE_PATH="${BASE_PATH:-$ROOT_DIR/data/coinbase-main}"
-OB_DEPTH="${OB_DEPTH:-200}"
-OB_PERIOD="${OB_PERIOD:-50}"
+PRODUCTS="${PRODUCTS:-BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT}"
+DEFAULT_BASE_PATH="$ROOT_DIR/data/coinbase-main"
+if [ -d "/deepwater/data" ]; then
+    DEFAULT_BASE_PATH="/deepwater/data/coinbase-advanced"
+fi
+BASE_PATH="${BASE_PATH:-$DEFAULT_BASE_PATH}"
+OB_DEPTH="${OB_DEPTH:-256}"
+OB_PERIOD="${OB_PERIOD:-100}"
+WARMUP_SECONDS="${WARMUP_SECONDS:-60}"
+OB_PREFIX="${OB_PREFIX:-OB}"
+OB_MAX_LEVELS="${OB_MAX_LEVELS:-8192}"
+OB_WORKERS="${OB_WORKERS:-2}"
+OB_PIN_CORES="${OB_PIN_CORES:-auto}"
 
-VENV="$ROOT_DIR/venv/bin/python"
+PY="${PY:-$ROOT_DIR/venv/bin/python}"
+if [ ! -x "$PY" ]; then
+    PY="python3"
+fi
+
 LOG_DIR="$SCRIPT_DIR/logs"
 PID_DIR="$SCRIPT_DIR/pids"
-INGEST_SOCK="$PID_DIR/ingest.sock"
-ORDERBOOK_SOCK="$PID_DIR/orderbook.sock"
 
 mkdir -p "$LOG_DIR" "$PID_DIR"
 cd "$ROOT_DIR"
 mkdir -p "$BASE_PATH"
-mkdir -p "$BASE_PATH"
 
-echo "🚀 Starting Coinbase data pipeline"
-echo "📁 Base path: $BASE_PATH"
-echo "📊 Products: $PRODUCTS"
-FREQ_HZ=$(echo "scale=1; 1000 / $OB_PERIOD" | bc)
-echo "📈 Orderbook: OB${OB_DEPTH}${OB_PERIOD} @ ${OB_PERIOD}ms (${FREQ_HZ}Hz)"
-echo ""
+is_running() {
+    local pidfile="$1"
+    if [ ! -f "$pidfile" ]; then
+        return 1
+    fi
+    local pid
+    pid="$(cat "$pidfile")"
+    kill -0 "$pid" 2>/dev/null
+}
 
-# Start L2 WebSocket ingest
-echo "▶️  Starting L2 ingest..."
-PYTHONPATH="$ROOT_DIR" nohup $VENV "$SCRIPT_DIR/ws_ingest_daemon.py" \
-    --products "$PRODUCTS" \
-    --base-path "$BASE_PATH" \
-    --control-sock "$INGEST_SOCK" \
-    > "$LOG_DIR/ingest.log" 2>&1 &
-echo $! > "$PID_DIR/ingest.pid"
-echo "   ✅ L2 ingest started (PID: $(cat "$PID_DIR/ingest.pid"))"
-
-# Wait for feeds to be created
-echo "⏳ Waiting 1s for L2 feeds..."
-sleep 1
-
-if ! kill -0 $(cat "$PID_DIR/ingest.pid") 2>/dev/null; then
-    echo "❌ L2 ingest failed! Check $LOG_DIR/ingest.log"
+if is_running "$PID_DIR/ingest.pid" || is_running "$PID_DIR/orderbook.pid"; then
+    echo "pipeline already running (see ./feeds/status)"
     exit 1
 fi
 
-# Start orderbook daemon
-echo "▶️  Starting orderbook daemon..."
-PYTHONPATH="$ROOT_DIR" nohup $VENV "$SCRIPT_DIR/orderbook_daemon.py" \
-    --products "$PRODUCTS" \
-    --base-path "$BASE_PATH" \
-    --depth "$OB_DEPTH" \
-    --period "$OB_PERIOD" \
-    --control-sock "$ORDERBOOK_SOCK" \
-    > "$LOG_DIR/orderbook.log" 2>&1 &
-echo $! > "$PID_DIR/orderbook.pid"
-echo "   ✅ Orderbook daemon started (PID: $(cat "$PID_DIR/orderbook.pid"))"
+echo "starting coinbase data pipeline"
+echo "  base_path=$BASE_PATH"
+echo "  products=$PRODUCTS"
+echo "  orderbook=OB${OB_DEPTH}${OB_PERIOD}"
+echo "  warmup_seconds=$WARMUP_SECONDS"
+echo "  ob_prefix=$OB_PREFIX"
+echo "  ob_max_levels=$OB_MAX_LEVELS"
+echo "  ob_workers=$OB_WORKERS"
+echo "  ob_pin_cores=$OB_PIN_CORES"
 
-echo ""
-echo "✅ Pipeline running!"
-echo ""
-echo "📊 Monitor:"
-echo "   tail -f feeds/logs/ingest.log"
-echo "   tail -f feeds/logs/orderbook.log"
-echo ""
-echo "🛑 Stop:"
-echo "   ./feeds/stop"
+PRODUCTS="$PRODUCTS" BASE_PATH="$BASE_PATH" PY="$PY" \
+  "$SCRIPT_DIR/start_ingest"
+PRODUCTS="$PRODUCTS" BASE_PATH="$BASE_PATH" PY="$PY" OB_DEPTH="$OB_DEPTH" OB_PERIOD="$OB_PERIOD" WARMUP_SECONDS="$WARMUP_SECONDS" OB_PREFIX="$OB_PREFIX" OB_MAX_LEVELS="$OB_MAX_LEVELS" OB_WORKERS="$OB_WORKERS" OB_PIN_CORES="$OB_PIN_CORES" \
+  "$SCRIPT_DIR/start_orderbook"
+
+echo "running"
+echo "status: ./feeds/status"
+echo "health: ./tools/feed_health --window 60 --once --hide-idle"
+echo "stop:   ./feeds/stop"

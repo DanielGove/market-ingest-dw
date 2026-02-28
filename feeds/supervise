@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_DIR="$SCRIPT_DIR/pids"
+LOG_DIR="$SCRIPT_DIR/logs"
+LOG_FILE="$LOG_DIR/supervise.log"
+PAUSE_FILE="$PID_DIR/supervise.pause"
+
+INTERVAL_S="${INTERVAL_S:-10}"
+STARTUP_GRACE_S="${STARTUP_GRACE_S:-5}"
+MAX_RESTARTS="${MAX_RESTARTS:-20}"
+RESTART_WINDOW_S="${RESTART_WINDOW_S:-600}"
+RESTART_COOLDOWN_S="${RESTART_COOLDOWN_S:-2}"
+
+mkdir -p "$PID_DIR" "$LOG_DIR"
+
+ts() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+log_line() {
+  echo "[$(ts)] $*" >>"$LOG_FILE"
+}
+
+is_alive() {
+  local name="$1"
+  local pidfile="$PID_DIR/$name.pid"
+  if [ ! -f "$pidfile" ]; then
+    return 1
+  fi
+  local pid
+  pid="$(cat "$pidfile")"
+  kill -0 "$pid" 2>/dev/null
+}
+
+stop_service() {
+  local svc="$1"
+  local pidfile="$PID_DIR/$svc.pid"
+  local sockfile="$PID_DIR/$svc.sock"
+  if [ -f "$pidfile" ]; then
+    local pid
+    pid="$(cat "$pidfile")"
+    if kill -0 "$pid" 2>/dev/null; then
+      log_line "stopping $svc pid=$pid"
+      kill "$pid" || true
+      for _ in {1..10}; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+          break
+        fi
+        sleep 0.2
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        log_line "force stopping $svc pid=$pid"
+        kill -9 "$pid" || true
+      fi
+    fi
+    rm -f "$pidfile"
+  fi
+  rm -f "$sockfile"
+}
+
+start_service() {
+  local svc="$1"
+  case "$svc" in
+    ingest)
+      log_line "starting ingest via ./feeds/start_ingest"
+      "$SCRIPT_DIR/start_ingest" >>"$LOG_FILE" 2>&1
+      ;;
+    orderbook)
+      log_line "starting orderbook via ./feeds/start_orderbook"
+      "$SCRIPT_DIR/start_orderbook" >>"$LOG_FILE" 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+log_line "supervisor started interval=${INTERVAL_S}s max_restarts=${MAX_RESTARTS}/${RESTART_WINDOW_S}s cooldown=${RESTART_COOLDOWN_S}s"
+
+declare -a restart_times=()
+
+while true; do
+  if [ -f "$PAUSE_FILE" ]; then
+    sleep "$INTERVAL_S"
+    continue
+  fi
+
+  if ! is_alive ingest || ! is_alive orderbook; then
+    now="$(date +%s)"
+
+    # prune restart history window
+    pruned=()
+    for t in "${restart_times[@]:-}"; do
+      if [ $((now - t)) -le "$RESTART_WINDOW_S" ]; then
+        pruned+=("$t")
+      fi
+    done
+    restart_times=("${pruned[@]:-}")
+
+    if [ "${#restart_times[@]}" -ge "$MAX_RESTARTS" ]; then
+      log_line "restart suppressed: too many restarts (${#restart_times[@]}) in window"
+      sleep "$INTERVAL_S"
+      continue
+    fi
+
+    ingest_up=0
+    orderbook_up=0
+    if is_alive ingest; then ingest_up=1; fi
+    if is_alive orderbook; then orderbook_up=1; fi
+    log_line "detected down service (ingest=$([ "$ingest_up" -eq 1 ] && echo up || echo down), orderbook=$([ "$orderbook_up" -eq 1 ] && echo up || echo down))"
+
+    restarted=0
+    if [ "$ingest_up" -eq 0 ]; then
+      stop_service ingest
+      if start_service ingest; then
+        restarted=1
+      else
+        log_line "ingest restart attempt failed"
+      fi
+      sleep "$RESTART_COOLDOWN_S"
+    fi
+
+    if [ "$orderbook_up" -eq 0 ]; then
+      stop_service orderbook
+      if start_service orderbook; then
+        restarted=1
+      else
+        log_line "orderbook restart attempt failed"
+      fi
+      sleep "$RESTART_COOLDOWN_S"
+    fi
+
+    if [ "$restarted" -eq 1 ]; then
+      sleep "$STARTUP_GRACE_S"
+      if is_alive ingest && is_alive orderbook; then
+        log_line "pipeline healthy after targeted restart"
+      fi
+      restart_times+=("$now")
+    fi
+  fi
+  sleep "$INTERVAL_S"
+done

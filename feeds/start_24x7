@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_DIR="$SCRIPT_DIR/pids"
+LOG_DIR="$SCRIPT_DIR/logs"
+SUP_PIDFILE="$PID_DIR/supervise.pid"
+SUP_LOGFILE="$LOG_DIR/supervise.log"
+LOCKDIR="$PID_DIR/start_24x7.lockdir"
+
+mkdir -p "$PID_DIR" "$LOG_DIR"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+  echo "start_24x7 already in progress"
+  exit 1
+fi
+trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
+
+find_supervise_pids() {
+  ps -eo pid=,args= | awk -v script="$SCRIPT_DIR/supervise" '
+    index($0, script) > 0 && index($0, "start_24x7") == 0 { print $1 }
+  '
+}
+
+mapfile -t existing_pids < <(find_supervise_pids)
+if [ "${#existing_pids[@]}" -gt 0 ]; then
+  keep_pid="${existing_pids[0]}"
+  echo "$keep_pid" > "$SUP_PIDFILE"
+  if [ "${#existing_pids[@]}" -gt 1 ]; then
+    echo "supervisor already running (duplicates: ${existing_pids[*]}); keeping pid=$keep_pid"
+  else
+    echo "supervisor already running pid=$keep_pid"
+  fi
+  exit 0
+fi
+
+if [ -f "$SUP_PIDFILE" ]; then
+  pid="$(cat "$SUP_PIDFILE")"
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "supervisor already running pid=$pid"
+    exit 0
+  fi
+  rm -f "$SUP_PIDFILE"
+fi
+
+nohup "$SCRIPT_DIR/supervise" >>"$SUP_LOGFILE" 2>&1 &
+echo $! > "$SUP_PIDFILE"
+sleep 1
+pid="$(cat "$SUP_PIDFILE")"
+if ! kill -0 "$pid" 2>/dev/null; then
+  echo "supervisor failed to stay up; check $SUP_LOGFILE"
+  exit 1
+fi
+echo "supervisor started pid=$pid log=$SUP_LOGFILE"

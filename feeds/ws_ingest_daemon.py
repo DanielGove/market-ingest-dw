@@ -24,10 +24,17 @@ logging.basicConfig(
 )
 log = logging.getLogger("ws_ingest_daemon")
 
+
+def _default_base_path() -> str:
+    if Path("/deepwater/data").exists():
+        return "/deepwater/data/coinbase-advanced"
+    return "data/coinbase-main"
+
+
 class WebSocketIngestDaemon:
     """Daemon wrapper for MarketDataEngine with custom base_path"""
     
-    def __init__(self, products: list[str], base_path: str = "data/coinbase-main",
+    def __init__(self, products: list[str], base_path: str = _default_base_path(),
                  control_sock: str | None = None):
         self.products = [p.upper() for p in products]
         self.base_path = base_path
@@ -62,16 +69,18 @@ class WebSocketIngestDaemon:
         # Replace with custom base_path  
         self.engine.platform = Platform(base_path=self.base_path)
         
-        # Start engine IO loop BEFORE subscribing
+        # Register products first while disconnected. The IO loop will issue
+        # one consolidated subscribe for all products after connect.
+        for product in self.products:
+            log.info(f"Subscribing to {product}...")
+            self.engine.subscribe(product)
+
+        # Start engine IO loop after product registration to avoid
+        # subscription burst rate-limits.
         self.engine._should_run = True
         self.engine.io_thread = __import__('threading').Thread(
             target=self.engine._io_loop, name="ws-io", daemon=True)
         self.engine.io_thread.start()
-        
-        # Now subscribe to products
-        for product in self.products:
-            log.info(f"Subscribing to {product}...")
-            self.engine.subscribe(product)
         
         self.running = True
         log.info("WebSocket engine started successfully")
@@ -160,7 +169,7 @@ def main():
     parser = argparse.ArgumentParser(description="WebSocket ingest daemon")
     parser.add_argument("--products", type=str, required=True,
                        help="Comma-separated list of products (e.g., XRP-USD,BTC-USD)")
-    parser.add_argument("--base-path", type=str, default="data/coinbase-main",
+    parser.add_argument("--base-path", type=str, default=_default_base_path(),
                        help="Base path for data storage")
     parser.add_argument("--control-sock", type=str, default="pids/ingest.sock",
                        help="Unix domain socket path for control commands")

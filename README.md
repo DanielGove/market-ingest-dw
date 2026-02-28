@@ -86,3 +86,74 @@ Example:
 ```bash
 WINDOW_SECONDS=60 STRATEGY=backtest.taker_pulse:TakerPulse RUN_ID=RUN1 ./tools/run_backtest all
 ```
+
+## 24/7 Ops
+
+Pipeline control:
+
+```bash
+./feeds/ctl status --json
+./feeds/ctl reconcile --aggressive --json
+./feeds/ctl ensure --aggressive --json
+./feeds/ctl ensure --aggressive --workers 2 --pin-cores 14,15 --ob-depth 256 --ob-period 100 --json
+```
+
+Legacy/manual controls:
+
+```bash
+./feeds/run
+./feeds/status
+./feeds/stop            # default: stop orderbook only (ingest-safe)
+./feeds/stop all        # full pipeline stop
+./feeds/restart_orderbook
+```
+
+`feeds/ctl ensure` is idempotent and safe for cron/agents. It converges ingest/orderbook/supervise to target state, and when ingest is already up it uses orderbook-only restart paths.
+
+Orderbook-only iteration (keeps trades/L2 ingest up):
+
+```bash
+./feeds/restart_orderbook
+./feeds/stop orderbook
+./feeds/start_orderbook
+```
+
+Orderbook performance knobs:
+
+```bash
+OB_WORKERS=4 OB_MAX_LEVELS=8192 ./feeds/restart_orderbook
+```
+
+Shadow/canary orderbook (parallel OB feed namespace):
+
+```bash
+OB_PREFIX=OBC ./feeds/start_ob 200 50 "BTC-USD,ETH-USD,SOL-USD"
+```
+
+`feeds/run` and `tools/feed_health` auto-default to `/deepwater/data/coinbase-advanced` when `/deepwater/data` exists.
+
+Continuous supervision:
+
+```bash
+./feeds/start_24x7
+tail -f feeds/logs/supervise.log
+```
+
+Install boot + periodic watchdog (every 5 minutes):
+
+```bash
+./tools/install_daily_feeds_cron.sh
+```
+
+Feed health (throughput + latency):
+
+```bash
+./tools/feed_health --window 60 --once --hide-idle
+./tools/feed_health --window 60 --interval 60 --hide-idle
+```
+
+Backtest preflight:
+
+```bash
+./tools/backtest_ready --strategy ping_pong --window 300
+```

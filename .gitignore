@@ -3,5 +3,8 @@ logs/*
 test/*
 pids/*
 
+feeds/logs/*
+feeds/pids/*
+
 *__pycache__*
 .vscode/*

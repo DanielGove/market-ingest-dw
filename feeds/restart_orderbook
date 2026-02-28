@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_DIR="$SCRIPT_DIR/pids"
+INGEST_PIDFILE="$PID_DIR/ingest.pid"
+ORDERBOOK_PIDFILE="$PID_DIR/orderbook.pid"
+PAUSE_FILE="$PID_DIR/supervise.pause"
+
+ALLOW_NO_INGEST="${ALLOW_NO_INGEST:-0}"
+
+is_ingest_pid() {
+  local pid="$1"
+  local cmd
+  cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  [[ "$cmd" == *"ws_ingest_daemon.py"* ]]
+}
+
+ingest_before=""
+if [ -f "$INGEST_PIDFILE" ]; then
+  ingest_before="$(cat "$INGEST_PIDFILE" 2>/dev/null || true)"
+fi
+
+if [ -z "$ingest_before" ] || ! kill -0 "$ingest_before" 2>/dev/null || ! is_ingest_pid "$ingest_before"; then
+  if [ "$ALLOW_NO_INGEST" != "1" ]; then
+    echo "restart aborted: ingest is not running; refusing to restart orderbook"
+    echo "override with ALLOW_NO_INGEST=1 if this is intentional"
+    exit 1
+  fi
+  ingest_before=""
+fi
+
+echo "restarting orderbook only"
+touch "$PAUSE_FILE"
+trap 'rm -f "$PAUSE_FILE"' EXIT
+if [ -f "$ORDERBOOK_PIDFILE" ]; then
+  "$SCRIPT_DIR/stop" orderbook
+fi
+"$SCRIPT_DIR/start_orderbook"
+rm -f "$PAUSE_FILE"
+trap - EXIT
+
+if [ -n "$ingest_before" ]; then
+  ingest_after="$(cat "$INGEST_PIDFILE" 2>/dev/null || true)"
+  if [ -z "$ingest_after" ] || ! kill -0 "$ingest_after" 2>/dev/null || ! is_ingest_pid "$ingest_after"; then
+    echo "warning: ingest was running before but is no longer alive after OB restart"
+    exit 1
+  fi
+  if [ "$ingest_before" != "$ingest_after" ]; then
+    echo "warning: ingest pid changed during OB restart ($ingest_before -> $ingest_after)"
+    exit 1
+  fi
+  echo "ingest preserved pid=$ingest_after"
+fi
+
+echo "orderbook restarted pid=$(cat "$ORDERBOOK_PIDFILE")"
