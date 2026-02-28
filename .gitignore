@@ -1,11 +1,23 @@
-data/*
-logs/*
-test/*
-pids/*
+# Runtime data/artifacts (root-level)
+/data/
+/logs/
+/out/
+/pids/
+/test/
 
-feeds/logs/*
-feeds/pids/*
-out/*
+# Feed runtime state/artifacts
+/feeds/logs/
+/feeds/pids/
 
+# Common runtime files
+*.log
+*.pid
+*.sock
+*.lock
+
+# Python cache
+__pycache__/
 *__pycache__*
-.vscode/*
+
+# Editor
+.vscode/
