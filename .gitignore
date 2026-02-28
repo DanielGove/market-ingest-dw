@@ -5,6 +5,7 @@ pids/*
 
 feeds/logs/*
 feeds/pids/*
+out/*
 
 *__pycache__*
 .vscode/*

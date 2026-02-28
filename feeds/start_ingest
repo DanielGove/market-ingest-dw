@@ -34,11 +34,12 @@ if [ -f "$PIDFILE" ]; then
 fi
 
 echo "starting l2 ingest"
+echo "==== ingest launch $(date -u +%Y-%m-%dT%H:%M:%SZ) products=$PRODUCTS base_path=$BASE_PATH ====" >> "$LOG_DIR/ingest.log"
 PYTHONPATH="$ROOT_DIR" nohup "$PY" "$SCRIPT_DIR/ws_ingest_daemon.py" \
   --products "$PRODUCTS" \
   --base-path "$BASE_PATH" \
   --control-sock "$INGEST_SOCK" \
-  > "$LOG_DIR/ingest.log" 2>&1 &
+  >> "$LOG_DIR/ingest.log" 2>&1 &
 echo $! > "$PIDFILE"
 echo "  ingest_pid=$(cat "$PIDFILE")"
 

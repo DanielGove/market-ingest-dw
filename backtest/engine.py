@@ -19,8 +19,10 @@ if str(root) not in sys.path:
 from backtest import ping_pong, taker_pulse
 from backtest.exchange import ExchangeSimulator, normalize_trade_side
 from backtest.feeds import (
+    execution_feed_name,
     get_intent_writer_named,
 )
+from backtest.segments import get_segment
 from backtest.strategy import Subscription, normalize_snapshot_output, resolve_strategy_method
 
 
@@ -86,6 +88,13 @@ def _event_index(field_names: Tuple[str, ...], idx_proc: int) -> int:
     return idx_proc
 
 
+def _first_index(field_names: Tuple[str, ...], candidates: Tuple[str, ...]) -> Optional[int]:
+    for name in candidates:
+        if name in field_names:
+            return field_names.index(name)
+    return None
+
+
 def _next_in_window(
     stream: Iterator[tuple],
     idx_proc: int,
@@ -120,9 +129,9 @@ def _build_lane(
     idx_proc = names.index(proc_field)
     idx_event = _event_index(names, idx_proc)
     if subscription.method == _TRADE_METHOD:
-        idx_trade_side = names.index("side") if "side" in names else None
-        idx_trade_price = names.index("price") if "price" in names else None
-        idx_trade_size = names.index("size") if "size" in names else None
+        idx_trade_side = _first_index(names, ("side", "aggressor_side", "taker_side", "maker_side"))
+        idx_trade_price = _first_index(names, ("price", "trade_price", "px"))
+        idx_trade_size = _first_index(names, ("size", "qty", "amount", "trade_size"))
     else:
         idx_trade_side = None
         idx_trade_price = None
@@ -193,16 +202,18 @@ def run(args):
     status_subs = [s for s in subscriptions if s.method == _STATUS_METHOD]
     if not market_subs:
         raise ValueError("strategy must include market subscriptions")
-    if not status_subs:
-        raise ValueError("strategy must include on_status subscription for execution status input")
-
-    execution_feed = status_subs[0].feed
-    execution_input_base_path = status_subs[0].base_path
-    for sub in status_subs[1:]:
-        if sub.feed != execution_feed or sub.base_path != execution_input_base_path:
-            raise ValueError("all on_status subscriptions must target the same execution feed/base_path")
+    if status_subs:
+        execution_feed = status_subs[0].feed
+        execution_input_base_path = status_subs[0].base_path
+        for sub in status_subs[1:]:
+            if sub.feed != execution_feed or sub.base_path != execution_input_base_path:
+                raise ValueError("all on_status subscriptions must target the same execution feed/base_path")
+        status_callbacks = [resolve_strategy_method(strat, sub.method) for sub in status_subs]
+    else:
+        execution_feed = execution_feed_name(strat.__class__.__name__)
+        execution_input_base_path = intent_out.base_path
+        status_callbacks = []
     execution_base_path = str(output_base_path) if output_base_path else execution_input_base_path
-    status_callbacks = [resolve_strategy_method(strat, sub.method) for sub in status_subs]
 
     decision_latency_us = int(getattr(strat, "decision_latency_us", 0))
     latency_ms = float(getattr(strat, "exchange_latency_ms", 0.5))
@@ -221,8 +232,32 @@ def run(args):
         return None
     anchor_scale = _detect_proc_scale(int(latest[-1][anchor_idx_proc]))
 
-    end_proc_us = int(args.window_end_processed_us) if args.window_end_processed_us is not None else _to_proc_us(latest[-1][anchor_idx_proc], anchor_scale)
-    start_proc_us = int(args.window_start_processed_us) if args.window_start_processed_us is not None else end_proc_us - int(args.seconds * 1_000_000.0)
+    segment_meta = None
+    if args.segment_id:
+        if args.window_start_processed_us is not None or args.window_end_processed_us is not None:
+            raise ValueError("cannot combine --segment-id with explicit --window-start/--window-end")
+        segment_meta = get_segment(args.segment_id, args.segments_file)
+        start_proc_us = int(segment_meta["window_start_processed_us"])
+        end_proc_us = int(segment_meta["window_end_processed_us"])
+        seg_market = [
+            (str(f.get("feed")), str(f.get("base_path")), str(f.get("method")))
+            for f in segment_meta.get("feeds", [])
+            if str(f.get("method")) != _STATUS_METHOD
+        ]
+        strat_market = [(s.feed, s.base_path, s.method) for s in market_subs]
+        if seg_market and seg_market != strat_market:
+            raise ValueError("segment feed set does not match strategy market subscriptions")
+    else:
+        end_proc_us = (
+            int(args.window_end_processed_us)
+            if args.window_end_processed_us is not None
+            else _to_proc_us(latest[-1][anchor_idx_proc], anchor_scale)
+        )
+        start_proc_us = (
+            int(args.window_start_processed_us)
+            if args.window_start_processed_us is not None
+            else end_proc_us - int(args.seconds * 1_000_000.0)
+        )
 
     # Special harness opinion: initialize exchange simulator before lane setup.
     sim = ExchangeSimulator(
@@ -411,6 +446,7 @@ def run(args):
                     "start_processed_us": int(first_proc) if first_proc is not None else None,
                     "end_processed_us": int(last_proc) if last_proc is not None else None,
                 },
+                "segment": segment_meta,
             },
         )
     return summary
@@ -424,6 +460,8 @@ def parse_args():
     ap.add_argument("--output-base-path", default=None)
     ap.add_argument("--window-start-processed-us", type=int, default=None)
     ap.add_argument("--window-end-processed-us", type=int, default=None)
+    ap.add_argument("--segment-id", default=None)
+    ap.add_argument("--segments-file", default=None)
     ap.add_argument("--manifest-path", default=None)
     ap.add_argument(
         "--strict-contracts",

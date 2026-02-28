@@ -57,6 +57,7 @@ fi
 
 if [ "$OB_WORKERS" = "1" ]; then
   echo "starting orderbook daemon"
+  echo "==== orderbook launch $(date -u +%Y-%m-%dT%H:%M:%SZ) workers=1 depth=$OB_DEPTH period=$OB_PERIOD products=$PRODUCTS base_path=$BASE_PATH ====" >> "$LOG_DIR/orderbook.log"
   PYTHONPATH="$ROOT_DIR" nohup "$PY" "$SCRIPT_DIR/orderbook_daemon.py" \
     --products "$PRODUCTS" \
     --base-path "$BASE_PATH" \
@@ -66,16 +67,17 @@ if [ "$OB_WORKERS" = "1" ]; then
     --feed-prefix "$OB_PREFIX" \
     --max-levels "$OB_MAX_LEVELS" \
     --control-sock "$ORDERBOOK_SOCK" \
-    > "$LOG_DIR/orderbook.log" 2>&1 &
+    >> "$LOG_DIR/orderbook.log" 2>&1 &
 else
   if [ "$OB_WORKERS" = "0" ]; then
     echo "starting orderbook manager workers=auto"
   else
     echo "starting orderbook manager workers=$OB_WORKERS"
   fi
+  echo "==== orderbook launch $(date -u +%Y-%m-%dT%H:%M:%SZ) workers=$OB_WORKERS depth=$OB_DEPTH period=$OB_PERIOD products=$PRODUCTS base_path=$BASE_PATH ====" >> "$LOG_DIR/orderbook.log"
   PRODUCTS="$PRODUCTS" BASE_PATH="$BASE_PATH" OB_DEPTH="$OB_DEPTH" OB_PERIOD="$OB_PERIOD" \
   WARMUP_SECONDS="$WARMUP_SECONDS" OB_PREFIX="$OB_PREFIX" OB_MAX_LEVELS="$OB_MAX_LEVELS" OB_WORKERS="$OB_WORKERS" OB_PIN_CORES="$OB_PIN_CORES" PY="$PY" \
-    nohup "$SCRIPT_DIR/orderbook_manager" > "$LOG_DIR/orderbook.log" 2>&1 &
+    nohup "$SCRIPT_DIR/orderbook_manager" >> "$LOG_DIR/orderbook.log" 2>&1 &
 fi
 echo $! > "$PIDFILE"
 echo "  orderbook_pid=$(cat "$PIDFILE")"

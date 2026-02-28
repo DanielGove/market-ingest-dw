@@ -77,6 +77,11 @@ def _find_procs(procs: list[Proc], needle: str) -> list[Proc]:
     return [p for p in procs if needle in p.args]
 
 
+def _find_local_procs(procs: list[Proc], rel_path: str) -> list[Proc]:
+    abs_path = str((ROOT_DIR / rel_path).resolve())
+    return [p for p in procs if abs_path in p.args]
+
+
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -185,10 +190,12 @@ def _parse_options(args_str: str) -> dict[str, str]:
 
 def _build_status() -> dict[str, Any]:
     procs = _ps()
-    ingest_procs = _find_procs(procs, "/feeds/ws_ingest_daemon.py")
-    sup_procs = _find_procs(procs, "/feeds/supervise")
-    ob_mgr_procs = _find_procs(procs, "/feeds/orderbook_manager")
-    ob_worker_procs = _find_procs(procs, "/feeds/orderbook_daemon.py")
+    ingest_path = str((FEEDS_DIR / "ws_ingest_daemon.py").resolve())
+    supervise_path = str((FEEDS_DIR / "supervise").resolve())
+    ingest_procs = _find_local_procs(procs, "feeds/ws_ingest_daemon.py")
+    sup_procs = _find_local_procs(procs, "feeds/supervise")
+    ob_mgr_procs = _find_local_procs(procs, "feeds/orderbook_manager")
+    ob_worker_procs = _find_local_procs(procs, "feeds/orderbook_daemon.py")
 
     ingest_sock = PIDS_DIR / "ingest.sock"
     ingest_raw = _connect_cmd(ingest_sock, "LIST")
@@ -223,8 +230,8 @@ def _build_status() -> dict[str, Any]:
             "pidfile_matches": pidfile_matches,
         }
 
-    ingest = _svc_state("ingest", ingest_procs, "/feeds/ws_ingest_daemon.py")
-    supervise = _svc_state("supervise", sup_procs, "/feeds/supervise")
+    ingest = _svc_state("ingest", ingest_procs, ingest_path)
+    supervise = _svc_state("supervise", sup_procs, supervise_path)
 
     orderbook_pidfile = PIDS_DIR / "orderbook.pid"
     orderbook_pidfile_pid = _read_pidfile(orderbook_pidfile)

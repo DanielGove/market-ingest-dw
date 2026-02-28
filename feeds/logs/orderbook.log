@@ -1,16 +1,16 @@
 starting orderbook worker[0] core=14 products=BTC-USD,ETH-USD,SOL-USD,USDT-USD,XRP-USD
 starting orderbook worker[1] core=15 products=BTC-USDT,ETH-USDT,SOL-USDT,USDT-USDC,XRP-USDT
-2026-02-27 21:27:04 [INFO] orderbook: Starting OB daemon products=['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'USDT-USDC', 'XRP-USDT'] depth=256 period_ms=100 prefix=OB max_levels=8192
-2026-02-27 21:27:04 [INFO] orderbook: Starting OB daemon products=['BTC-USD', 'ETH-USD', 'SOL-USD', 'USDT-USD', 'XRP-USD'] depth=256 period_ms=100 prefix=OB max_levels=8192
-2026-02-27 21:27:04 [INFO] orderbook: Orderbook control socket at /home/ocean-man/coinbase-dw/feeds/pids/orderbook_1.sock
-2026-02-27 21:27:04 [INFO] orderbook: Orderbook control socket at /home/ocean-man/coinbase-dw/feeds/pids/orderbook_0.sock
-2026-02-27 21:27:04 [INFO] orderbook: Created product BTC-USDT feeds (OB256100-BTC-USDT)
-2026-02-27 21:27:04 [INFO] orderbook: Created product BTC-USD feeds (OB256100-BTC-USD)
-2026-02-27 21:27:04 [INFO] orderbook: Created product ETH-USDT feeds (OB256100-ETH-USDT)
-2026-02-27 21:27:04 [INFO] orderbook: Created product ETH-USD feeds (OB256100-ETH-USD)
-2026-02-27 21:27:04 [INFO] orderbook: Created product SOL-USDT feeds (OB256100-SOL-USDT)
-2026-02-27 21:27:04 [INFO] orderbook: Created product SOL-USD feeds (OB256100-SOL-USD)
-2026-02-27 21:27:05 [INFO] orderbook: Created product USDT-USDC feeds (OB256100-USDT-USDC)
-2026-02-27 21:27:05 [INFO] orderbook: Created product USDT-USD feeds (OB256100-USDT-USD)
-2026-02-27 21:27:05 [INFO] orderbook: Created product XRP-USDT feeds (OB256100-XRP-USDT)
-2026-02-27 21:27:05 [INFO] orderbook: Created product XRP-USD feeds (OB256100-XRP-USD)
+2026-02-28 00:40:06 [INFO] orderbook: Starting OB daemon products=['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'USDT-USDC', 'XRP-USDT'] depth=256 period_ms=100 prefix=OB max_levels=8192
+2026-02-28 00:40:06 [INFO] orderbook: Starting OB daemon products=['BTC-USD', 'ETH-USD', 'SOL-USD', 'USDT-USD', 'XRP-USD'] depth=256 period_ms=100 prefix=OB max_levels=8192
+2026-02-28 00:40:06 [INFO] orderbook: Orderbook control socket at /home/ocean-man/coinbase-dw/feeds/pids/orderbook_1.sock
+2026-02-28 00:40:06 [INFO] orderbook: Orderbook control socket at /home/ocean-man/coinbase-dw/feeds/pids/orderbook_0.sock
+2026-02-28 00:40:06 [INFO] orderbook: Created product BTC-USDT feeds (OB256100-BTC-USDT)
+2026-02-28 00:40:06 [INFO] orderbook: Created product BTC-USD feeds (OB256100-BTC-USD)
+2026-02-28 00:40:06 [INFO] orderbook: Created product ETH-USD feeds (OB256100-ETH-USD)
+2026-02-28 00:40:06 [INFO] orderbook: Created product ETH-USDT feeds (OB256100-ETH-USDT)
+2026-02-28 00:40:06 [INFO] orderbook: Created product SOL-USDT feeds (OB256100-SOL-USDT)
+2026-02-28 00:40:06 [INFO] orderbook: Created product SOL-USD feeds (OB256100-SOL-USD)
+2026-02-28 00:40:06 [INFO] orderbook: Created product USDT-USDC feeds (OB256100-USDT-USDC)
+2026-02-28 00:40:06 [INFO] orderbook: Created product USDT-USD feeds (OB256100-USDT-USD)
+2026-02-28 00:40:06 [INFO] orderbook: Created product XRP-USDT feeds (OB256100-XRP-USDT)
+2026-02-28 00:40:06 [INFO] orderbook: Created product XRP-USD feeds (OB256100-XRP-USD)

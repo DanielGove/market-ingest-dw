@@ -301,8 +301,8 @@ def main() -> None:
             "BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT",
         ),
     )
-    ap.add_argument("--ob-depth", type=int, default=int(os.environ.get("OB_DEPTH", "200")))
-    ap.add_argument("--ob-period", type=int, default=int(os.environ.get("OB_PERIOD", "50")))
+    ap.add_argument("--ob-depth", type=int, default=int(os.environ.get("OB_DEPTH", "256")))
+    ap.add_argument("--ob-period", type=int, default=int(os.environ.get("OB_PERIOD", "100")))
     ap.add_argument("--window", type=float, default=60.0)
     ap.add_argument("--interval", type=float, default=60.0)
     ap.add_argument("--max-latency-ms", type=float, default=15_000.0)

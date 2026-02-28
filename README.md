@@ -28,6 +28,15 @@ Strategies define:
 
 Strategies return lists of `OrderIntent` (or intent-like dicts) from callbacks that produce orders.
 
+Low-boilerplate option:
+
+- Subclass `backtest.strategy.EventDrivenStrategy`
+- Override only callback methods (`on_snapshot`, `on_trade`, `on_status`)
+- Defaults use current feed profile:
+  - market base path: `/deepwater/data/coinbase-advanced` when available
+  - orderbook: `OB256100-<PRODUCT>`
+  - trades: `CB-TRADES-<PRODUCT>`
+
 ## Runtime Model
 
 Two time axes:
@@ -41,6 +50,12 @@ Engine builds two priority queues:
 - `strategy_heap`: strategy-deliverable records keyed by `processed_time`
   - market records
   - execution status records
+
+Market format assumptions are intentionally lightweight:
+
+- Processed-time field aliases supported: `processed_time`, `processed_us`
+- Event-time field aliases supported: `event_time`, `snapshot_time`, `snapshot_us`, `event_us`
+- Trade field aliases supported: `side|aggressor_side|taker_side`, `price|trade_price|px`, `size|qty|amount|trade_size`
 
 ## Timeline Invariant
 
@@ -85,6 +100,15 @@ Example:
 
 ```bash
 WINDOW_SECONDS=60 STRATEGY=backtest.taker_pulse:TakerPulse RUN_ID=RUN1 ./tools/run_backtest all
+```
+
+Use a frozen dataset segment ID (repeatable window selection):
+
+```bash
+./tools/backtest_segments create --segment-id BTCUSD-A --strategy ping_pong --seconds 300 --description "5m freeze"
+SEGMENT_ID=BTCUSD-A STRATEGY=ping_pong RUN_ID=RUN_SEG_A ./tools/run_backtest all
+./tools/backtest_segments get --segment-id BTCUSD-A
+./tools/backtest_segments list
 ```
 
 ## 24/7 Ops

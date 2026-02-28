@@ -12,6 +12,7 @@ if str(root) not in sys.path:
     sys.path.insert(0, str(root))
 
 from backtest import engine as bt_engine
+from backtest.segments import get_segment
 
 
 def _detect_proc_scale(sample_raw: int) -> int:
@@ -48,6 +49,8 @@ def _run_once(args, start_proc_us: int, end_proc_us: int, run_label: str):
         output_base_path=str(tmp / "io"),
         window_start_processed_us=start_proc_us,
         window_end_processed_us=end_proc_us,
+        segment_id=None,
+        segments_file=args.segments_file,
         manifest_path=None,
         strict_contracts=True,
     )
@@ -59,9 +62,16 @@ def main():
     ap.add_argument("--strategy", default="ping_pong")
     ap.add_argument("--seconds", type=int, default=30)
     ap.add_argument("--run-id", default="DETCHK")
+    ap.add_argument("--segment-id", default=None)
+    ap.add_argument("--segments-file", default=None)
     args = ap.parse_args()
 
-    start_proc_us, end_proc_us = _freeze_window(args.strategy, args.seconds)
+    if args.segment_id:
+        seg = get_segment(args.segment_id, args.segments_file)
+        start_proc_us = int(seg["window_start_processed_us"])
+        end_proc_us = int(seg["window_end_processed_us"])
+    else:
+        start_proc_us, end_proc_us = _freeze_window(args.strategy, args.seconds)
     a = _run_once(args, start_proc_us, end_proc_us, "a")
     b = _run_once(args, start_proc_us, end_proc_us, "b")
 

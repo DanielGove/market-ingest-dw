@@ -28,6 +28,8 @@ WINDOW_SECONDS="${WINDOW_SECONDS:-60}"
 STRATEGY="${STRATEGY:-ping_pong}"
 RUN_ID="${RUN_ID:-RUN1}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/out/backtest/$RUN_ID}"
+SEGMENT_ID="${SEGMENT_ID:-}"
+SEGMENTS_FILE="${SEGMENTS_FILE:-$ROOT_DIR/out/backtest/segments.jsonl}"
 
 mkdir -p "$OUT_DIR"
 MANIFEST_PATH="$OUT_DIR/engine-manifest.json"
@@ -53,19 +55,29 @@ EOF
 }
 
 run_engine() {
+  local seg_args=()
+  if [ -n "$SEGMENT_ID" ]; then
+    seg_args+=(--segment-id "$SEGMENT_ID" --segments-file "$SEGMENTS_FILE")
+  fi
   "$PY" "$ROOT_DIR/backtest/engine.py" \
     --seconds "$WINDOW_SECONDS" \
     --strategy "$STRATEGY" \
     --run-id "$RUN_ID" \
     --manifest-path "$MANIFEST_PATH" \
+    "${seg_args[@]}" \
     "$@"
 }
 
 run_determinism() {
+  local seg_args=()
+  if [ -n "$SEGMENT_ID" ]; then
+    seg_args+=(--segment-id "$SEGMENT_ID" --segments-file "$SEGMENTS_FILE")
+  fi
   "$PY" "$ROOT_DIR/tools/replay_determinism_check.py" \
     --seconds "$WINDOW_SECONDS" \
     --strategy "$STRATEGY" \
     --run-id "$RUN_ID" \
+    "${seg_args[@]}" \
     "$@"
 }
 
