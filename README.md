@@ -10,6 +10,7 @@ Deepwater-native backtesting harness with a single-threaded, causal scheduler.
 - `backtest/feeds.py`: Deepwater feed schemas and writer helpers
 - `backtest/ping_pong.py`: reference maker-style strategy
 - `backtest/taker_pulse.py`: reference taker-validation strategy
+- `feeds/CONNECTOR.md`: Coinbase connector spec (schemas, timing semantics, segments, control plane, failure model)
 
 ## Strategy Contract
 
