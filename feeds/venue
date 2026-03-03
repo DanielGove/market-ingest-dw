@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ $# -lt 2 ]; then
+  cat <<'USAGE'
+Usage:
+  ./feeds/venue <venue> <command> [args...]
+
+Commands:
+  run|status|stop|start_ingest|start_orderbook|start_ob|restart_orderbook|start_24x7|supervise
+  ingest_ctl|ob_ctl|segment_ctl
+  feed_health
+
+Examples:
+  ./feeds/venue kraken run
+  ./feeds/venue coinbase status --no-health
+  ./feeds/venue kraken feed_health --window 60 --once --hide-idle
+USAGE
+  exit 1
+fi
+
+venue="$1"
+cmd="$2"
+shift 2 || true
+
+case "$cmd" in
+  run|status|stop|start_ingest|start_orderbook|start_ob|restart_orderbook|start_24x7|supervise)
+    DW_VENUE="$venue" ./feeds/"$cmd" "$@"
+    ;;
+  ingest_ctl|ob_ctl|segment_ctl)
+    DW_VENUE="$venue" ./feeds/"$cmd" "$@"
+    ;;
+  feed_health)
+    DW_VENUE="$venue" ./tools/feed_health "$@"
+    ;;
+  *)
+    echo "unknown command: $cmd" >&2
+    exit 2
+    ;;
+esac

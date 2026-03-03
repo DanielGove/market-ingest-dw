@@ -1,1 +1,1 @@
-# Headless app package for Coinbase → Deepwater.
+# Headless market-data ingestion runtime package.

@@ -3,11 +3,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENUE_KEY="${DW_VENUE_KEY:-${DW_VENUE:-coinbase}}"
 
-PRODUCTS="${PRODUCTS:-BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT}"
-DEFAULT_BASE_PATH="$ROOT_DIR/data/coinbase-main"
+if [ "$VENUE_KEY" = "kraken" ]; then
+  PRODUCTS_DEFAULT="BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,XRP-USD,XRP-USDT"
+  LOCAL_BASE="data/kraken-main"
+  DEEPWATER_BASE="/deepwater/data/kraken-spot"
+else
+  PRODUCTS_DEFAULT="BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT"
+  LOCAL_BASE="data/coinbase-main"
+  DEEPWATER_BASE="/deepwater/data/coinbase-advanced"
+fi
+
+PRODUCTS="${PRODUCTS:-$PRODUCTS_DEFAULT}"
+DEFAULT_BASE_PATH="$ROOT_DIR/$LOCAL_BASE"
 if [ -d "/deepwater/data" ]; then
-  DEFAULT_BASE_PATH="/deepwater/data/coinbase-advanced"
+  DEFAULT_BASE_PATH="$DEEPWATER_BASE"
 fi
 BASE_PATH="${BASE_PATH:-$DEFAULT_BASE_PATH}"
 
@@ -36,6 +47,7 @@ fi
 echo "starting l2 ingest"
 echo "==== ingest launch $(date -u +%Y-%m-%dT%H:%M:%SZ) products=$PRODUCTS base_path=$BASE_PATH ====" >> "$LOG_DIR/ingest.log"
 PYTHONPATH="$ROOT_DIR" nohup "$PY" "$SCRIPT_DIR/ws_ingest_daemon.py" \
+  --venue "$VENUE_KEY" \
   --products "$PRODUCTS" \
   --base-path "$BASE_PATH" \
   --control-sock "$INGEST_SOCK" \

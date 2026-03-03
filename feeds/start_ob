@@ -7,18 +7,29 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENUE_KEY="${DW_VENUE_KEY:-${DW_VENUE:-coinbase}}"
+
+if [ "$VENUE_KEY" = "kraken" ]; then
+  DEFAULT_BASE_PATH="data/kraken-main"
+  DEFAULT_DEEPWATER_BASE="/deepwater/data/kraken-spot"
+  DEFAULT_L2_FEED_PREFIX="KR-L2"
+else
+  DEFAULT_BASE_PATH="data/coinbase-main"
+  DEFAULT_DEEPWATER_BASE="/deepwater/data/coinbase-advanced"
+  DEFAULT_L2_FEED_PREFIX="CB-L2"
+fi
 
 DEPTH="$1"
 PERIOD="$2"
 PRODUCTS="$3"
-DEFAULT_BASE_PATH="data/coinbase-main"
 if [ -d "/deepwater/data" ]; then
-  DEFAULT_BASE_PATH="/deepwater/data/coinbase-advanced"
+  DEFAULT_BASE_PATH="$DEFAULT_DEEPWATER_BASE"
 fi
 BASE_PATH="${4:-$DEFAULT_BASE_PATH}"
 OB_PREFIX="${OB_PREFIX:-${5:-OB}}"
 OB_MAX_LEVELS="${OB_MAX_LEVELS:-${6:-8192}}"
 WARMUP_SECONDS="${WARMUP_SECONDS:-60}"
+L2_FEED_PREFIX="${L2_FEED_PREFIX:-$DEFAULT_L2_FEED_PREFIX}"
 VENV="$ROOT_DIR/venv/bin/python"
 
 if [ -z "$DEPTH" ] || [ -z "$PERIOD" ] || [ -z "$PRODUCTS" ]; then
@@ -42,6 +53,7 @@ nohup $VENV "$SCRIPT_DIR/orderbook_daemon.py" \
   --period "$PERIOD" \
   --warmup-seconds "$WARMUP_SECONDS" \
   --feed-prefix "$OB_PREFIX" \
+  --l2-feed-prefix "$L2_FEED_PREFIX" \
   --max-levels "$OB_MAX_LEVELS" \
   --control-sock "$SOCK" \
   > "$LOG" 2>&1 &

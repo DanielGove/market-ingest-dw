@@ -21,3 +21,6 @@ __pycache__/
 
 # Editor
 .vscode/
+
+# Extra Docs
+deepwater-starter/*

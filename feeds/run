@@ -5,18 +5,34 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENUE_KEY="${DW_VENUE_KEY:-${DW_VENUE:-coinbase}}"
 
 # Defaults (overridable via env)
-PRODUCTS="${PRODUCTS:-BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT}"
-DEFAULT_BASE_PATH="$ROOT_DIR/data/coinbase-main"
+if [ "$VENUE_KEY" = "kraken" ]; then
+    PRODUCTS_DEFAULT="BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,XRP-USD,XRP-USDT"
+    LOCAL_BASE="data/kraken-main"
+    DEEPWATER_BASE="/deepwater/data/kraken-spot"
+    DEFAULT_OB_PREFIX="KROB"
+    DEFAULT_L2_FEED_PREFIX="KR-L2"
+else
+    PRODUCTS_DEFAULT="BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT"
+    LOCAL_BASE="data/coinbase-main"
+    DEEPWATER_BASE="/deepwater/data/coinbase-advanced"
+    DEFAULT_OB_PREFIX="OB"
+    DEFAULT_L2_FEED_PREFIX="CB-L2"
+fi
+
+PRODUCTS="${PRODUCTS:-$PRODUCTS_DEFAULT}"
+DEFAULT_BASE_PATH="$ROOT_DIR/$LOCAL_BASE"
 if [ -d "/deepwater/data" ]; then
-    DEFAULT_BASE_PATH="/deepwater/data/coinbase-advanced"
+    DEFAULT_BASE_PATH="$DEEPWATER_BASE"
 fi
 BASE_PATH="${BASE_PATH:-$DEFAULT_BASE_PATH}"
 OB_DEPTH="${OB_DEPTH:-256}"
 OB_PERIOD="${OB_PERIOD:-100}"
 WARMUP_SECONDS="${WARMUP_SECONDS:-60}"
-OB_PREFIX="${OB_PREFIX:-OB}"
+OB_PREFIX="${OB_PREFIX:-$DEFAULT_OB_PREFIX}"
+L2_FEED_PREFIX="${L2_FEED_PREFIX:-$DEFAULT_L2_FEED_PREFIX}"
 OB_MAX_LEVELS="${OB_MAX_LEVELS:-8192}"
 OB_WORKERS="${OB_WORKERS:-2}"
 OB_PIN_CORES="${OB_PIN_CORES:-auto}"
@@ -43,24 +59,49 @@ is_running() {
     kill -0 "$pid" 2>/dev/null
 }
 
+detect_active_venue() {
+    local pidfile="$PID_DIR/ingest.pid"
+    if [ ! -f "$pidfile" ]; then
+        echo "unknown"
+        return
+    fi
+    local pid cmd
+    pid="$(cat "$pidfile" 2>/dev/null || true)"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        echo "unknown"
+        return
+    fi
+    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+        *"/deepwater/data/kraken-spot"*|*"data/kraken-main"*) echo "kraken" ;;
+        *"/deepwater/data/hyperliquid-main"*|*"data/hyperliquid-main"*) echo "hyperliquid" ;;
+        *"/deepwater/data/coinbase-advanced"*|*"data/coinbase-main"*) echo "coinbase" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
 if is_running "$PID_DIR/ingest.pid" || is_running "$PID_DIR/orderbook.pid"; then
-    echo "pipeline already running (see ./feeds/status)"
+    active_venue="$(detect_active_venue)"
+    echo "pipeline already running (active venue: $active_venue, requested: $VENUE_KEY)"
+    echo "use ./feeds/status for details, or stop first with ./feeds/stop all"
     exit 1
 fi
 
-echo "starting coinbase data pipeline"
+echo "starting $VENUE_KEY data pipeline"
 echo "  base_path=$BASE_PATH"
 echo "  products=$PRODUCTS"
 echo "  orderbook=OB${OB_DEPTH}${OB_PERIOD}"
 echo "  warmup_seconds=$WARMUP_SECONDS"
 echo "  ob_prefix=$OB_PREFIX"
+echo "  l2_feed_prefix=$L2_FEED_PREFIX"
 echo "  ob_max_levels=$OB_MAX_LEVELS"
 echo "  ob_workers=$OB_WORKERS"
 echo "  ob_pin_cores=$OB_PIN_CORES"
 
 PRODUCTS="$PRODUCTS" BASE_PATH="$BASE_PATH" PY="$PY" \
+    DW_VENUE="$VENUE_KEY" \
   "$SCRIPT_DIR/start_ingest"
-PRODUCTS="$PRODUCTS" BASE_PATH="$BASE_PATH" PY="$PY" OB_DEPTH="$OB_DEPTH" OB_PERIOD="$OB_PERIOD" WARMUP_SECONDS="$WARMUP_SECONDS" OB_PREFIX="$OB_PREFIX" OB_MAX_LEVELS="$OB_MAX_LEVELS" OB_WORKERS="$OB_WORKERS" OB_PIN_CORES="$OB_PIN_CORES" \
+PRODUCTS="$PRODUCTS" BASE_PATH="$BASE_PATH" PY="$PY" OB_DEPTH="$OB_DEPTH" OB_PERIOD="$OB_PERIOD" WARMUP_SECONDS="$WARMUP_SECONDS" OB_PREFIX="$OB_PREFIX" L2_FEED_PREFIX="$L2_FEED_PREFIX" OB_MAX_LEVELS="$OB_MAX_LEVELS" OB_WORKERS="$OB_WORKERS" OB_PIN_CORES="$OB_PIN_CORES" DW_VENUE="$VENUE_KEY" \
   "$SCRIPT_DIR/start_orderbook"
 
 echo "running"

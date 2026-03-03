@@ -9,6 +9,7 @@ import time
 import signal
 import logging
 import argparse
+import os
 import threading
 import socket
 import struct
@@ -37,6 +38,7 @@ class OrderBookDaemon:
         control_sock: str | None = None,
         warmup_seconds: int = 60,
         feed_prefix: str = "OB",
+        l2_feed_prefix: str = "CB-L2",
         max_levels: int = 8192,
     ):
         self.products = [p.upper() for p in products]
@@ -45,6 +47,7 @@ class OrderBookDaemon:
         self.period_ms = period_ms
         self.warmup_seconds = int(max(1, warmup_seconds))
         self.feed_prefix = feed_prefix
+        self.l2_feed_prefix = l2_feed_prefix
         self.max_levels = int(max(self.depth, max_levels))
         self.running = False
 
@@ -76,11 +79,12 @@ class OrderBookDaemon:
     # lifecycle -------------------------------------------------
     def start(self):
         log.info(
-            "Starting OB daemon products=%s depth=%d period_ms=%d prefix=%s max_levels=%d",
+            "Starting OB daemon products=%s depth=%d period_ms=%d prefix=%s l2_prefix=%s max_levels=%d",
             self.products,
             self.depth,
             self.period_ms,
             self.feed_prefix,
+            self.l2_feed_prefix,
             self.max_levels,
         )
         self.platform = Platform(base_path=self.base_path)
@@ -175,7 +179,7 @@ class OrderBookDaemon:
         self.snap_bid_views[product] = float_view[:side_width]
         self.snap_ask_views[product] = float_view[side_width:]
 
-        l2_name = f"CB-L2-{product}"
+        l2_name = f"{self.l2_feed_prefix}-{product}"
         self.readers[product] = self.platform.create_reader(l2_name)
         self.field_idx[product] = {n: i for i, n in enumerate(self.readers[product].field_names)}
         self.last_l2_ts[product] = 0
@@ -505,6 +509,9 @@ class OrderBookDaemon:
 
 
 def main():
+    venue_key = os.environ.get("DW_VENUE_KEY") or os.environ.get("DW_VENUE") or "coinbase"
+    default_l2_prefix = "KR-L2" if venue_key == "kraken" else "CB-L2"
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--products", required=True, help="Comma-separated, e.g., BTC-USD,XRP-USD")
     ap.add_argument("--base-path", required=True)
@@ -513,6 +520,7 @@ def main():
     ap.add_argument("--control-sock", type=str, default="pids/orderbook.sock")
     ap.add_argument("--warmup-seconds", type=int, default=60, help="Warm-start window for L2 bootstrap")
     ap.add_argument("--feed-prefix", type=str, default="OB", help="Feed name prefix (default: OB)")
+    ap.add_argument("--l2-feed-prefix", type=str, default=default_l2_prefix, help="Input L2 feed prefix")
     ap.add_argument("--max-levels", type=int, default=8192, help="Max price levels per side to retain in memory")
     args = ap.parse_args()
 
@@ -524,6 +532,7 @@ def main():
         control_sock=args.control_sock,
         warmup_seconds=args.warmup_seconds,
         feed_prefix=args.feed_prefix,
+        l2_feed_prefix=args.l2_feed_prefix,
         max_levels=args.max_levels,
     )
     daemon.start()

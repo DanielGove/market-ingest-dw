@@ -10,6 +10,7 @@ OB_DEPTH="${OB_DEPTH:?OB_DEPTH required}"
 OB_PERIOD="${OB_PERIOD:?OB_PERIOD required}"
 WARMUP_SECONDS="${WARMUP_SECONDS:-60}"
 OB_PREFIX="${OB_PREFIX:-OB}"
+L2_FEED_PREFIX="${L2_FEED_PREFIX:-CB-L2}"
 OB_MAX_LEVELS="${OB_MAX_LEVELS:-8192}"
 OB_WORKERS="${OB_WORKERS:-2}"
 OB_PIN_CORES="${OB_PIN_CORES:-auto}"
@@ -118,6 +119,7 @@ for ((i=0; i<workers; i++)); do
       --period "$OB_PERIOD" \
       --warmup-seconds "$WARMUP_SECONDS" \
       --feed-prefix "$OB_PREFIX" \
+      --l2-feed-prefix "$L2_FEED_PREFIX" \
       --max-levels "$OB_MAX_LEVELS" \
       --control-sock "$sock" \
       >> "$LOG_DIR/orderbook.log" 2>&1 &
@@ -130,6 +132,7 @@ for ((i=0; i<workers; i++)); do
       --period "$OB_PERIOD" \
       --warmup-seconds "$WARMUP_SECONDS" \
       --feed-prefix "$OB_PREFIX" \
+      --l2-feed-prefix "$L2_FEED_PREFIX" \
       --max-levels "$OB_MAX_LEVELS" \
       --control-sock "$sock" \
       >> "$LOG_DIR/orderbook.log" 2>&1 &

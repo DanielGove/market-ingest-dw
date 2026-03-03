@@ -8,8 +8,5 @@ pysimdjson>=7.0.0
 # Fast number parsing
 fastnumbers>=5.1.0
 
-# Orderbook structure
-sortedcontainers>=2.4.0
-
 # WebSocket client
 websocket-client>=1.9.0

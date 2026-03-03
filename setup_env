@@ -15,10 +15,32 @@ echo "==> Installing requirements"
 ./venv/bin/pip install -r requirements.txt
 
 echo "==> Marking helper scripts executable"
-chmod +x setup_env tools/health_check tools/resource_monitor \
-  feeds/run feeds/stop feeds/start_ob \
-  feeds/ingest_ctl.py feeds/ob_ctl.py feeds/watch_ob.py \
-  feeds/ws_ingest_daemon.py feeds/orderbook_daemon.py
+scripts=(
+  setup_env
+  tools/feed_health
+  feeds/run
+  feeds/stop
+  feeds/status
+  feeds/start_ingest
+  feeds/start_orderbook
+  feeds/start_ob
+  feeds/restart_orderbook
+  feeds/start_24x7
+  feeds/supervise
+  feeds/venue
+  feeds/orderbook_manager
+  feeds/ingest_ctl.py
+  feeds/ob_ctl.py
+  feeds/segment_ctl.py
+  feeds/ws_ingest_daemon.py
+  feeds/orderbook_daemon.py
+)
+
+for script in "${scripts[@]}"; do
+  if [ -e "$script" ]; then
+    chmod +x "$script"
+  fi
+done
 
 echo "==> Done. Start pipeline with:"
 echo "    ./feeds/run"

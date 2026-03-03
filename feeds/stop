@@ -8,6 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PID_DIR="$SCRIPT_DIR/pids"
 
 usage() {
@@ -56,6 +57,30 @@ collect_pidfiles() {
       ;;
   esac
   shopt -u nullglob
+}
+
+kill_orphans_by_pattern() {
+  local pattern="$1"
+  local pids pid
+  pids="$(pgrep -f "$pattern" || true)"
+  if [ -z "$pids" ]; then
+    return
+  fi
+
+  for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "  stopping orphan pid=$pid ($pattern)"
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+
+  sleep 0.2
+  for pid in $pids; do
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "  force stopping orphan pid=$pid ($pattern)"
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done
 }
 
 stop_pidfile() {
@@ -110,11 +135,41 @@ for t in "${targets[@]}"; do
   fi
 done
 
-if printf '%s\n' "${targets[@]}" | rg -qx 'all'; then
-  targets=("all")
+for t in "${targets[@]}"; do
+  if [ "$t" = "all" ]; then
+    targets=("all")
+    break
+  fi
+done
+
+need_ingest=0
+need_orderbook=0
+need_supervise=0
+for t in "${targets[@]}"; do
+  case "$t" in
+    all)
+      need_ingest=1
+      need_orderbook=1
+      need_supervise=1
+      ;;
+    ingest) need_ingest=1 ;;
+    orderbook) need_orderbook=1 ;;
+    supervise) need_supervise=1 ;;
+  esac
+done
+
+if [ "$need_ingest" -eq 1 ]; then
+  kill_orphans_by_pattern "$ROOT_DIR/feeds/ws_ingest_daemon.py"
+fi
+if [ "$need_orderbook" -eq 1 ]; then
+  kill_orphans_by_pattern "$ROOT_DIR/feeds/orderbook_manager"
+  kill_orphans_by_pattern "$ROOT_DIR/feeds/orderbook_daemon.py"
+fi
+if [ "$need_supervise" -eq 1 ]; then
+  kill_orphans_by_pattern "$ROOT_DIR/feeds/supervise"
 fi
 
-echo "stopping coinbase data pipeline: ${targets[*]}"
+echo "stopping data pipeline: ${targets[*]}"
 
 pidfiles=()
 for t in "${targets[@]}"; do

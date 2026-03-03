@@ -1,4 +1,4 @@
-# Coinbase Connector Spec
+# Venue Connector Spec (Coinbase)
 
 This document is the source of truth for the live Coinbase ingest and orderbook connector in this repo.
 

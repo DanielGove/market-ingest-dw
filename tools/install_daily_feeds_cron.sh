@@ -24,5 +24,5 @@ EOF
 )
 
 printf '%s\n%s\n' "$filtered" "$cron_block" | crontab -
-echo "installed cron watchdog for coinbase-dw + bsc-dw"
+echo "installed cron watchdog for feed ingestion workspaces"
 echo "check: crontab -l | sed -n '/$START_MARK/,/$END_MARK/p'"

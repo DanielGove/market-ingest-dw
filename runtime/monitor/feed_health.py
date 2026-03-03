@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Feed health monitor for Coinbase ingest/orderbook pipelines."""
+"""Shared feed health monitor for venue ingest/orderbook pipelines."""
 import argparse
 import json
 import os
@@ -11,38 +11,47 @@ from typing import Dict, Optional, Sequence
 from deepwater.platform import Platform
 
 
-def _venue_key() -> str:
-    return os.environ.get("DW_VENUE_KEY") or os.environ.get("DW_VENUE") or "coinbase"
+VENUE_NAME = "coinbase"
+TRADES_PREFIX = "CB-TRADES"
+L2_PREFIX = "CB-L2"
+DEFAULT_OB_PREFIX = "OB"
+DEFAULT_PRODUCTS = "BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT"
+DEFAULT_BASE_PATH = "data/coinbase-main"
+DEFAULT_DEEPWATER_BASE_PATH = "/deepwater/data/coinbase-advanced"
+DEFAULT_EXTRA_FEED_PREFIXES = ""
 
 
-def _venue_defaults() -> dict[str, str]:
-    key = _venue_key()
-    if key == "kraken":
-        return {
-            "trades_prefix": "KR-TRADES",
-            "l2_prefix": "KR-L2",
-            "ob_prefix": "KROB",
-            "products": "BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,XRP-USD,XRP-USDT",
-            "deepwater_base": "/deepwater/data/kraken-spot",
-            "local_base": "data/kraken-main",
-        }
-    return {
-        "trades_prefix": "CB-TRADES",
-        "l2_prefix": "CB-L2",
-        "ob_prefix": "OB",
-        "products": "BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT",
-        "deepwater_base": "/deepwater/data/coinbase-advanced",
-        "local_base": "data/coinbase-main",
-    }
+def configure(
+    *,
+    venue_name: str,
+    trades_prefix: str,
+    l2_prefix: str,
+    default_ob_prefix: str,
+    default_products: str,
+    default_base_path: str,
+    default_deepwater_base_path: str,
+    default_extra_feed_prefixes: str = "",
+) -> None:
+    global VENUE_NAME, TRADES_PREFIX, L2_PREFIX, DEFAULT_OB_PREFIX, DEFAULT_PRODUCTS, DEFAULT_BASE_PATH
+    global DEFAULT_DEEPWATER_BASE_PATH, DEFAULT_EXTRA_FEED_PREFIXES
+    VENUE_NAME = venue_name
+    TRADES_PREFIX = trades_prefix
+    L2_PREFIX = l2_prefix
+    DEFAULT_OB_PREFIX = default_ob_prefix
+    DEFAULT_PRODUCTS = default_products
+    DEFAULT_BASE_PATH = default_base_path
+    DEFAULT_DEEPWATER_BASE_PATH = default_deepwater_base_path
+    DEFAULT_EXTRA_FEED_PREFIXES = default_extra_feed_prefixes
 
 
-VENUE = _venue_defaults()
+def _parse_prefixes(raw: str) -> tuple[str, ...]:
+    return tuple(p.strip() for p in str(raw or "").split(",") if p.strip())
 
 
 def _default_base_path() -> str:
     if Path("/deepwater/data").exists():
-        return VENUE["deepwater_base"]
-    return VENUE["local_base"]
+        return DEFAULT_DEEPWATER_BASE_PATH
+    return DEFAULT_BASE_PATH
 
 
 def _to_us(raw: int) -> int:
@@ -122,23 +131,26 @@ def _estimate_row_bytes(platform: Platform, feed: str, cache: Dict[str, Optional
         return None
 
 
-def _feed_sort_key(feed: str) -> tuple[int, str]:
-    if feed.startswith(f"{VENUE['trades_prefix']}-"):
+def _feed_sort_key(feed: str, extra_prefixes: Sequence[str]) -> tuple[int, str]:
+    if feed.startswith(f"{TRADES_PREFIX}-"):
         return (1, feed)
-    if feed.startswith(f"{VENUE['l2_prefix']}-"):
+    if feed.startswith(f"{L2_PREFIX}-"):
         return (2, feed)
-    if feed.startswith(VENUE["ob_prefix"]):
+    if feed.startswith(DEFAULT_OB_PREFIX):
         return (3, feed)
+    for i, pref in enumerate(extra_prefixes, start=4):
+        if feed.startswith(pref):
+            return (i, feed)
     return (9, feed)
 
 
-def _expected_feeds(products: list[str], ob_depth: int, ob_period: int) -> list[str]:
+def _expected_feeds(products: list[str], ob_depth: int, ob_period: int, ob_prefix: str) -> list[str]:
     feeds: list[str] = []
     for p in products:
         pid = p.upper()
-        feeds.append(f"{VENUE['trades_prefix']}-{pid}")
-        feeds.append(f"{VENUE['l2_prefix']}-{pid}")
-        feeds.append(f"{VENUE['ob_prefix']}{ob_depth}{ob_period}-{pid}")
+        feeds.append(f"{TRADES_PREFIX}-{pid}")
+        feeds.append(f"{L2_PREFIX}-{pid}")
+        feeds.append(f"{ob_prefix}{ob_depth}{ob_period}-{pid}")
     return feeds
 
 
@@ -320,39 +332,47 @@ def _print_json(stats: list[dict], base_path: str, window_s: float) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=f"{_venue_key()} feed health monitor (throughput + latency)")
+    ap = argparse.ArgumentParser(description=f"{VENUE_NAME} feed health monitor (throughput + latency)")
     ap.add_argument("--base-path", default=_default_base_path())
     ap.add_argument(
         "--products",
         default=os.environ.get(
             "PRODUCTS",
-            VENUE["products"],
+            DEFAULT_PRODUCTS,
         ),
     )
     ap.add_argument("--ob-depth", type=int, default=int(os.environ.get("OB_DEPTH", "256")))
     ap.add_argument("--ob-period", type=int, default=int(os.environ.get("OB_PERIOD", "100")))
+    ap.add_argument("--ob-prefix", default=os.environ.get("OB_PREFIX", DEFAULT_OB_PREFIX))
     ap.add_argument("--window", type=float, default=60.0)
     ap.add_argument("--interval", type=float, default=60.0)
     ap.add_argument("--max-latency-ms", type=float, default=15_000.0)
+    ap.add_argument(
+        "--extra-prefixes",
+        default=os.environ.get("EXTRA_FEED_PREFIXES", DEFAULT_EXTRA_FEED_PREFIXES),
+        help="Comma-separated additional feed prefixes (e.g., HL-POOL,HL-RPC)",
+    )
     ap.add_argument("--hide-idle", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--once", action="store_true")
     args = ap.parse_args()
 
     products = [p.strip().upper() for p in args.products.split(",") if p.strip()]
+    extra_prefixes = _parse_prefixes(args.extra_prefixes)
     platform = Platform(base_path=str(Path(args.base_path)))
 
     while True:
         started = time.time()
-        expected = _expected_feeds(products, args.ob_depth, args.ob_period)
+        expected = _expected_feeds(products, args.ob_depth, args.ob_period, args.ob_prefix)
         existing = [
             f
             for f in platform.list_feeds()
-            if f.startswith(f"{VENUE['trades_prefix']}-")
-            or f.startswith(f"{VENUE['l2_prefix']}-")
-            or f.startswith(VENUE["ob_prefix"])
+            if f.startswith(f"{TRADES_PREFIX}-")
+            or f.startswith(f"{L2_PREFIX}-")
+            or f.startswith(args.ob_prefix)
+            or any(f.startswith(pref) for pref in extra_prefixes)
         ]
-        feeds = sorted(set(expected) | set(existing), key=_feed_sort_key)
+        feeds = sorted(set(expected) | set(existing), key=lambda name: _feed_sort_key(name, extra_prefixes))
         stats = _collect(platform, feeds, args.window, args.max_latency_ms)
 
         if args.json:

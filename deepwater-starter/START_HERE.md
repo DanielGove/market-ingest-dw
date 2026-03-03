@@ -35,7 +35,7 @@ python ./apps/quickstart_app.py
 deepwater-health --base-path "$DEEPWATER_BASE" --check-feeds --max-age-seconds 300
 ```
 
-6) See usable segment windows (for backtests):
+6) See usable segment windows:
 
 ```bash
 deepwater-segments --base-path "$DEEPWATER_BASE" --feed trades --status usable --suggest-range

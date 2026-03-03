@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PID_DIR="$SCRIPT_DIR/pids"
 WINDOW="${WINDOW:-60}"
 SHOW_HEALTH=1
+VENUE_KEY="${DW_VENUE_KEY:-${DW_VENUE:-coinbase}}"
 
 if [ "${1:-}" = "--no-health" ]; then
   SHOW_HEALTH=0
@@ -32,7 +33,36 @@ is_alive() {
   esac
 }
 
+detect_active_venue() {
+  local pidfile="$PID_DIR/ingest.pid"
+  if [ ! -f "$pidfile" ]; then
+    echo "unknown"
+    return
+  fi
+  local pid cmd
+  pid="$(cat "$pidfile" 2>/dev/null || true)"
+  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+    echo "unknown"
+    return
+  fi
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  case "$cmd" in
+    *"/deepwater/data/kraken-spot"*|*"data/kraken-main"*) echo "kraken" ;;
+    *"/deepwater/data/hyperliquid-main"*|*"data/hyperliquid-main"*) echo "hyperliquid" ;;
+    *"/deepwater/data/coinbase-advanced"*|*"data/coinbase-main"*) echo "coinbase" ;;
+    *) echo "unknown" ;;
+  esac
+}
+
+PY="$ROOT_DIR/venv/bin/python"
+if [ ! -x "$PY" ]; then
+  PY="python3"
+fi
+
 ok=1
+active_venue="$(detect_active_venue)"
+echo "requested venue: $VENUE_KEY"
+echo "active venue:    $active_venue"
 echo "service status:"
 for svc in ingest orderbook supervise; do
   if is_alive "$svc"; then
@@ -49,18 +79,22 @@ echo ""
 echo "control sockets:"
 if [ -S "$PID_DIR/ingest.sock" ]; then
   echo -n "  ingest products: "
-  ingest_out="$("$ROOT_DIR/venv/bin/python" "$SCRIPT_DIR/ingest_ctl.py" list 2>/dev/null || true)"
+  ingest_out="$("$PY" "$SCRIPT_DIR/ingest_ctl.py" list 2>/dev/null || true)"
   if [ -n "$ingest_out" ]; then
     echo "$ingest_out"
   else
     echo "socket present but not responding"
   fi
 else
-  echo "  ingest products: socket missing"
+  if is_alive ingest; then
+    echo "  ingest products: socket missing (service running without control socket)"
+  else
+    echo "  ingest products: socket missing"
+  fi
 fi
 
 if [ -S "$PID_DIR/orderbook.sock" ]; then
-  ob_out="$("$ROOT_DIR/venv/bin/python" - <<'PY' "$PID_DIR/orderbook.sock" 2>/dev/null || true
+  ob_out="$("$PY" - <<'PY' "$PID_DIR/orderbook.sock" 2>/dev/null || true
 import socket, sys
 sock_path = sys.argv[1]
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -81,7 +115,7 @@ else
   ob_socks=("$PID_DIR"/orderbook_*.sock)
   shopt -u nullglob
   if [ "${#ob_socks[@]}" -gt 0 ]; then
-    ob_out="$("$ROOT_DIR/venv/bin/python" - <<'PY' "${ob_socks[@]}" 2>/dev/null || true
+    ob_out="$("$PY" - <<'PY' "${ob_socks[@]}" 2>/dev/null || true
 import socket, sys
 products = set()
 for sock_path in sys.argv[1:]:
@@ -107,7 +141,11 @@ PY
       echo "worker sockets present but not responding"
     fi
   else
-    echo "  orderbook products: socket missing"
+    if is_alive orderbook; then
+      echo "  orderbook products: socket missing (service running without control socket)"
+    else
+      echo "  orderbook products: socket missing"
+    fi
   fi
 fi
 
