@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PID_DIR="$SCRIPT_DIR/pids"
+WINDOW="${WINDOW:-60}"
+SHOW_HEALTH=1
+REQUESTED_VENUE_ENV="${DW_VENUE_KEY:-${DW_VENUE:-}}"
+INSTANCE_RAW="${DW_INSTANCE:-${REQUESTED_VENUE_ENV:-default}}"
+ALL_INSTANCES=0
+PY="$ROOT_DIR/venv/bin/python"
+if [ ! -x "$PY" ]; then
+  PY="python3"
+fi
+KNOWN_VENUES="$(PYTHONPATH="$ROOT_DIR" $PY - <<'PY' 2>/dev/null || true
+from connectors.loader import list_connector_profiles
+keys = sorted({str(p.get('key') or '').strip().lower() for p in list_connector_profiles() if p.get('key')})
+print(','.join([k for k in keys if k]))
+PY
+)"
+
+sanitize_instance() {
+  local raw="$1"
+  local s
+  s="$(printf '%s' "$raw" | tr -c '[:alnum:]_-' '_')"
+  if [ -z "$s" ]; then
+    s="default"
+  fi
+  echo "$s"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-health)
+      SHOW_HEALTH=0
+      shift
+      ;;
+    --instance)
+      INSTANCE_RAW="${2:-}"
+      shift 2
+      ;;
+    --all-instances)
+      ALL_INSTANCES=1
+      shift
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: ./ops/status [--instance <name>] [--all-instances] [--no-health]
+EOF
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+INSTANCE="$(sanitize_instance "$INSTANCE_RAW")"
+
+known_venue() {
+  local candidate="${1,,}"
+  if [ -z "$candidate" ] || [ -z "$KNOWN_VENUES" ]; then
+    return 1
+  fi
+  IFS=',' read -r -a _venues <<< "$KNOWN_VENUES"
+  for v in "${_venues[@]}"; do
+    if [ "$v" = "$candidate" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+is_alive() {
+  local name="$1"
+  local instance="$2"
+  local pidfile="$PID_DIR/$name.$instance.pid"
+  if [ ! -f "$pidfile" ]; then
+    return 1
+  fi
+  local pid
+  pid="$(cat "$pidfile")"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 1
+  fi
+  local cmd
+  cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  case "$name" in
+    ingest) [[ "$cmd" == *"runtime/ws_ingest_daemon.py"* || "$cmd" == *"/ops/internal/ws_ingest_daemon"* ]] ;;
+    supervise) [[ "$cmd" == *"/ops/internal/supervise"* ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+detect_active_venue() {
+  local instance="$1"
+  local ingest_sock="$PID_DIR/ingest.$instance.sock"
+  if [ ! -S "$ingest_sock" ]; then
+    echo "unknown"
+    return
+  fi
+  local status_json
+  status_json="$("$SCRIPT_DIR/ingest_ctl" status --instance "$instance" 2>/dev/null || true)"
+  if [ -z "$status_json" ]; then
+    echo "unknown"
+    return
+  fi
+  "$PY" - <<'PY' "$status_json" 2>/dev/null || echo "unknown"
+import json,sys
+try:
+    payload = json.loads(sys.argv[1])
+except Exception:
+    print("unknown")
+    raise SystemExit(0)
+raw = str(payload.get("venue", "unknown") or "unknown").lower()
+if raw.endswith("_spot") or raw.endswith("_perp"):
+    raw = raw.split("_", 1)[0]
+print(raw)
+PY
+}
+
+resolve_requested_venue() {
+  local instance="$1"
+  local active="$2"
+  if [ -n "$REQUESTED_VENUE_ENV" ]; then
+    echo "${REQUESTED_VENUE_ENV,,}"
+    return
+  fi
+  if [ "$active" != "unknown" ]; then
+    echo "$active"
+    return
+  fi
+  local inst_lc="${instance,,}"
+  if known_venue "$inst_lc"; then
+    echo "$inst_lc"
+    return
+  fi
+  echo "unknown"
+}
+
+run_status_for_instance() {
+  local instance="$1"
+  local ok=1
+  local active_venue
+  active_venue="$(detect_active_venue "$instance")"
+  local requested_venue
+  requested_venue="$(resolve_requested_venue "$instance" "$active_venue")"
+
+  echo "instance:        $instance"
+  echo "requested venue: $requested_venue"
+  echo "active venue:    $active_venue"
+  echo "service status:"
+  for svc in ingest supervise; do
+    if is_alive "$svc" "$instance"; then
+      echo "  $svc: running pid=$(cat "$PID_DIR/$svc.$instance.pid")"
+    else
+      echo "  $svc: down"
+      if [ "$svc" != "supervise" ]; then
+        ok=0
+      fi
+    fi
+  done
+
+  echo ""
+  echo "control sockets:"
+  if [ -S "$PID_DIR/ingest.$instance.sock" ]; then
+    echo -n "  ingest products: "
+    ingest_out="$("$SCRIPT_DIR/ingest_ctl" list --instance "$instance" 2>/dev/null || true)"
+    if [ -n "$ingest_out" ]; then
+      echo "$ingest_out"
+    else
+      echo "socket present but not responding"
+    fi
+  else
+    if is_alive ingest "$instance"; then
+      echo "  ingest products: socket missing (service running without control socket)"
+    else
+      echo "  ingest products: socket missing"
+    fi
+  fi
+
+  echo "  features: out-of-scope for ingest runtime"
+
+  if [ "$SHOW_HEALTH" -eq 1 ]; then
+    echo ""
+    echo "feed health (window=${WINDOW}s):"
+    if [ "$requested_venue" = "unknown" ] && [ "$active_venue" = "unknown" ]; then
+      echo "unable to resolve venue for health check (set DW_VENUE_KEY/DW_VENUE or use --instance that maps to a known venue)"
+      ok=0
+    else
+      DW_INSTANCE="$instance" DW_VENUE="$requested_venue" "$ROOT_DIR/ops/feed_health" --instance "$instance" --window "$WINDOW" --once --hide-idle || ok=0
+    fi
+  fi
+
+  return "$(( ok == 1 ? 0 : 1 ))"
+}
+
+overall_ok=0
+if [ "$ALL_INSTANCES" -eq 1 ]; then
+  shopt -s nullglob
+  pidfiles=("$PID_DIR"/ingest.*.pid)
+  shopt -u nullglob
+  if [ "${#pidfiles[@]}" -eq 0 ]; then
+    echo "no ingest instances found"
+    exit 1
+  fi
+  overall_ok=1
+  for pf in "${pidfiles[@]}"; do
+    inst="$(basename "$pf")"
+    inst="${inst#ingest.}"
+    inst="${inst%.pid}"
+    echo "------------------------------------------------------------"
+    if ! run_status_for_instance "$inst"; then
+      overall_ok=0
+    fi
+  done
+else
+  if run_status_for_instance "$INSTANCE"; then
+    overall_ok=1
+  else
+    overall_ok=0
+  fi
+fi
+
+if [ "$overall_ok" -eq 1 ]; then
+  exit 0
+fi
+exit 1

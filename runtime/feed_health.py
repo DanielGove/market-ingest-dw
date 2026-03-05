@@ -1,48 +1,76 @@
 #!/usr/bin/env python3
-"""Feed health monitor for Coinbase ingest/orderbook pipelines."""
+"""Feed health monitor for venue ingest runtime feeds."""
+
 import argparse
 import json
 import os
+import socket
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-import time
 from typing import Dict, Optional, Sequence
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from deepwater.platform import Platform
+from runtime.venue import default_products, make_venue, resolve_base_path, venue_key_from_env
 
 
-def _venue_key() -> str:
-    return os.environ.get("DW_VENUE_KEY") or os.environ.get("DW_VENUE") or "coinbase"
+def _default_base_path(venue) -> str:
+    return resolve_base_path(venue, ROOT_DIR)
 
 
-def _venue_defaults() -> dict[str, str]:
-    key = _venue_key()
-    if key == "kraken":
-        return {
-            "trades_prefix": "KR-TRADES",
-            "l2_prefix": "KR-L2",
-            "ob_prefix": "KROB",
-            "products": "BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,XRP-USD,XRP-USDT",
-            "deepwater_base": "/deepwater/data/kraken-spot",
-            "local_base": "data/kraken-main",
-        }
-    return {
-        "trades_prefix": "CB-TRADES",
-        "l2_prefix": "CB-L2",
-        "ob_prefix": "OB",
-        "products": "BTC-USD,BTC-USDT,ETH-USD,ETH-USDT,SOL-USD,SOL-USDT,USDT-USD,USDT-USDC,XRP-USD,XRP-USDT",
-        "deepwater_base": "/deepwater/data/coinbase-advanced",
-        "local_base": "data/coinbase-main",
-    }
+def _discover_live_products(instance: str) -> list[str]:
+    ingest_sock = ROOT_DIR / "ops" / "pids" / f"ingest.{instance}.sock"
+    if not ingest_sock.exists():
+        return []
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        s.settimeout(0.5)
+        s.connect(str(ingest_sock))
+        s.sendall(b"LIST\n")
+        data = s.recv(4096).decode("ascii", "ignore").strip()
+        if not data or data.startswith("ERR"):
+            return []
+        return [p.strip().upper() for p in data.split(",") if p.strip()]
+    except Exception:
+        return []
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
 
 
-VENUE = _venue_defaults()
-
-
-def _default_base_path() -> str:
-    if Path("/deepwater/data").exists():
-        return VENUE["deepwater_base"]
-    return VENUE["local_base"]
+def _discover_live_venue(instance: str) -> str | None:
+    ingest_sock = ROOT_DIR / "ops" / "pids" / f"ingest.{instance}.sock"
+    if not ingest_sock.exists():
+        return None
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        s.settimeout(0.5)
+        s.connect(str(ingest_sock))
+        s.sendall(b"STATUS\n")
+        data = s.recv(8192).decode("ascii", "ignore").strip()
+        if not data or data.startswith("ERR"):
+            return None
+        payload = json.loads(data)
+        raw = str(payload.get("venue", "") or "").strip().lower()
+        if not raw:
+            return None
+        if raw.endswith("_spot") or raw.endswith("_perp"):
+            raw = raw.split("_", 1)[0]
+        return raw or None
+    except Exception:
+        return None
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
 
 
 def _to_us(raw: int) -> int:
@@ -123,23 +151,25 @@ def _estimate_row_bytes(platform: Platform, feed: str, cache: Dict[str, Optional
 
 
 def _feed_sort_key(feed: str) -> tuple[int, str]:
-    if feed.startswith(f"{VENUE['trades_prefix']}-"):
-        return (1, feed)
-    if feed.startswith(f"{VENUE['l2_prefix']}-"):
-        return (2, feed)
-    if feed.startswith(VENUE["ob_prefix"]):
-        return (3, feed)
-    return (9, feed)
+    return (1, feed)
 
 
-def _expected_feeds(products: list[str], ob_depth: int, ob_period: int) -> list[str]:
-    feeds: list[str] = []
-    for p in products:
-        pid = p.upper()
-        feeds.append(f"{VENUE['trades_prefix']}-{pid}")
-        feeds.append(f"{VENUE['l2_prefix']}-{pid}")
-        feeds.append(f"{VENUE['ob_prefix']}{ob_depth}{ob_period}-{pid}")
-    return feeds
+def _discover_feeds(platform: Platform, products: list[str]) -> list[str]:
+    feeds = sorted(platform.list_feeds(), key=_feed_sort_key)
+    if not products:
+        return feeds
+
+    product_set = {p.upper() for p in products}
+    out: list[str] = []
+    for feed in feeds:
+        matched = False
+        for pid in product_set:
+            if feed.endswith(f"-{pid}"):
+                matched = True
+                break
+        if matched:
+            out.append(feed)
+    return out
 
 
 def _collect(
@@ -320,17 +350,11 @@ def _print_json(stats: list[dict], base_path: str, window_s: float) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=f"{_venue_key()} feed health monitor (throughput + latency)")
-    ap.add_argument("--base-path", default=_default_base_path())
-    ap.add_argument(
-        "--products",
-        default=os.environ.get(
-            "PRODUCTS",
-            VENUE["products"],
-        ),
-    )
-    ap.add_argument("--ob-depth", type=int, default=int(os.environ.get("OB_DEPTH", "256")))
-    ap.add_argument("--ob-period", type=int, default=int(os.environ.get("OB_PERIOD", "100")))
+    ap = argparse.ArgumentParser(description="Feed health monitor (throughput + latency)")
+    ap.add_argument("--venue", default=None, help="Venue key (coinbase|kraken|hyperliquid)")
+    ap.add_argument("--instance", default=None, help="Instance name (default: DW_INSTANCE or DW_VENUE or 'default')")
+    ap.add_argument("--base-path", default=None)
+    ap.add_argument("--products", default=None)
     ap.add_argument("--window", type=float, default=60.0)
     ap.add_argument("--interval", type=float, default=60.0)
     ap.add_argument("--max-latency-ms", type=float, default=15_000.0)
@@ -338,27 +362,48 @@ def main() -> None:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--once", action="store_true")
     args = ap.parse_args()
+    instance = (args.instance or os.environ.get("DW_INSTANCE") or os.environ.get("DW_VENUE") or "default").strip() or "default"
 
-    products = [p.strip().upper() for p in args.products.split(",") if p.strip()]
-    platform = Platform(base_path=str(Path(args.base_path)))
+    venue_key: str | None = args.venue.strip().lower() if args.venue else None
+    if not venue_key:
+        venue_key = _discover_live_venue(instance)
+    if not venue_key:
+        try:
+            venue_key = venue_key_from_env(default=None)
+        except ValueError:
+            venue_key = None
+    if not venue_key:
+        raise SystemExit(
+            "unable to resolve venue for feed health; pass --venue or set DW_VENUE_KEY/DW_VENUE, "
+            "or ensure ingest control socket is responsive"
+        )
+
+    venue = make_venue(venue_key)
+    base_path = args.base_path or _default_base_path(venue)
+
+    products_raw = args.products
+    if products_raw is None:
+        products_raw = os.environ.get("PRODUCTS")
+    if not products_raw:
+        live_products = _discover_live_products(instance)
+        if live_products:
+            products = live_products
+        else:
+            products = default_products(venue)
+    else:
+        products = [p.strip().upper() for p in products_raw.split(",") if p.strip()]
+
+    platform = Platform(base_path=str(Path(base_path)))
 
     while True:
         started = time.time()
-        expected = _expected_feeds(products, args.ob_depth, args.ob_period)
-        existing = [
-            f
-            for f in platform.list_feeds()
-            if f.startswith(f"{VENUE['trades_prefix']}-")
-            or f.startswith(f"{VENUE['l2_prefix']}-")
-            or f.startswith(VENUE["ob_prefix"])
-        ]
-        feeds = sorted(set(expected) | set(existing), key=_feed_sort_key)
+        feeds = _discover_feeds(platform, products)
         stats = _collect(platform, feeds, args.window, args.max_latency_ms)
 
         if args.json:
-            _print_json(stats, str(Path(args.base_path)), args.window)
+            _print_json(stats, str(Path(base_path)), args.window)
         else:
-            _print_text(stats, str(Path(args.base_path)), args.window, args.hide_idle)
+            _print_text(stats, str(Path(base_path)), args.window, args.hide_idle)
 
         if args.once:
             return

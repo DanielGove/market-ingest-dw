@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
+from collections.abc import Callable, Sequence
+from typing import Any, Optional
 
 import orjson
 from fastnumbers import fast_float as _ff
@@ -15,6 +16,8 @@ from deepwater.utils.timestamps import parse_us_timestamp
 
 
 def trades_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Coinbase trades."""
+
     return {
         "feed_name": f"CB-TRADES-{pid}",
         "mode": "UF",
@@ -37,6 +40,8 @@ def trades_spec(pid: str) -> dict:
 
 
 def l2_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Coinbase L2 updates."""
+
     return {
         "feed_name": f"CB-L2-{pid}",
         "mode": "UF",
@@ -58,7 +63,7 @@ def l2_spec(pid: str) -> dict:
     }
 
 
-def _ensure_bytes(val) -> Optional[bytes]:
+def _ensure_bytes(val: Any) -> Optional[bytes]:
     if val is None:
         return None
     if isinstance(val, (bytes, bytearray, memoryview)):
@@ -66,7 +71,7 @@ def _ensure_bytes(val) -> Optional[bytes]:
     return str(val).encode("ascii")
 
 
-def _parse_ts(val) -> int:
+def _parse_ts(val: Any) -> int:
     data = _ensure_bytes(val)
     if not data:
         return 0
@@ -76,42 +81,53 @@ def _parse_ts(val) -> int:
 class CoinbaseSpotConnector:
     venue = "coinbase_spot"
 
-    def __init__(self, *, uri: str = "wss://advanced-trade-ws.coinbase.com", sample_size: int = 16) -> None:
+    def __init__(self, *, uri: str = "wss://advanced-trade-ws.coinbase.com") -> None:
         self.uri = uri
-        self.sample_size = int(sample_size)
         self._parser = _JSONParser()
         self._last_seq = -1
         self._seq_gaps = 0
         self._hb_timeout = 12.0
 
-    def trades_spec(self, pid: str) -> dict:
-        return trades_spec(pid)
+    def feed_specs(self, pid: str) -> dict[str, dict]:
+        """Return feed specs for Coinbase trades and L2 updates."""
 
-    def l2_spec(self, pid: str) -> dict:
-        return l2_spec(pid)
+        return {
+            "trades": trades_spec(pid),
+            "l2": l2_spec(pid),
+        }
 
-    def on_connect(self, _engine) -> None:
+    def on_connect(self, _engine: Any) -> None:
+        """No-op hook for Coinbase; subscriptions happen separately."""
+
         return
 
-    def send_subscribe(self, engine, product_ids) -> None:
+    def send_subscribe(self, engine: Any, product_ids: Sequence[str]) -> None:
+        """Send Coinbase channel subscribe messages for product ids."""
+
         pids = tuple(product_ids or ())
         engine._ws.send(orjson.dumps({"type": "subscribe", "channel": "heartbeats"}))
         engine._ws.send(orjson.dumps({"type": "subscribe", "channel": "market_trades", "product_ids": pids}))
         engine._ws.send(orjson.dumps({"type": "subscribe", "channel": "level2", "product_ids": pids}))
 
-    def send_unsubscribe(self, engine, targets) -> None:
+    def send_unsubscribe(self, engine: Any, targets: Sequence[str]) -> None:
+        """Send Coinbase channel unsubscribe messages for product ids."""
+
         pids = tuple(targets or ())
         engine._ws.send(orjson.dumps({"type": "unsubscribe", "channel": "market_trades", "product_ids": pids}))
         engine._ws.send(orjson.dumps({"type": "unsubscribe", "channel": "level2", "product_ids": pids}))
 
-    def on_timeout(self, engine) -> None:
+    def on_timeout(self, engine: Any) -> None:
+        """Enforce heartbeat timeout to trigger reconnect when stale."""
+
         hb_age = time.monotonic() - engine._hb_last
         if hb_age > self._hb_timeout:
             raise WebSocketConnectionClosedException(
                 f"heartbeat timeout ({hb_age:.1f}s > {self._hb_timeout:.1f}s)"
             )
 
-    def handle_raw(self, engine, raw, recv_us: int, now_us) -> None:
+    def handle_raw(self, engine: Any, raw: bytes | str, recv_us: int, now_us: Callable[[], int]) -> None:
+        """Parse Coinbase payloads and write trades/L2 records."""
+
         try:
             doc = self._parser.parse(raw).as_dict()
         except Exception as e:
@@ -134,8 +150,9 @@ class CoinbaseSpotConnector:
             engine._hb_last = time.monotonic()
             return
 
-        trade_writers = engine.trade_writers
-        book_writers = engine.book_writers
+        family_writers = engine.family_writers
+        trade_writers = family_writers.get("trades", {})
+        book_writers = family_writers.get("l2", {})
 
         if channel == "market_trades":
             packet_us = _parse_ts(doc.get("timestamp"))
@@ -185,5 +202,7 @@ class CoinbaseSpotConnector:
                     )
                     idx = False
 
-    def extra_status(self, _engine) -> dict:
+    def extra_status(self, _engine: Any) -> dict[str, Any]:
+        """Return Coinbase connector-specific runtime status fields."""
+
         return {"seq_gaps": self._seq_gaps}

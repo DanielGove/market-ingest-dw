@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup for coinbase-dw on a fresh clone.
+# One-time setup for market-ingest-dw on a fresh clone.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,30 +10,35 @@ if [ ! -d venv ]; then
   python3 -m venv venv
 fi
 
+if [ ! -x ./venv/bin/python ]; then
+  echo "venv exists but python executable is missing; recreating venv" >&2
+  rm -rf ./venv
+  python3 -m venv venv
+fi
+
+echo "==> Refreshing venv launchers"
+./venv/bin/python -m ensurepip --upgrade >/dev/null
+./venv/bin/python -m pip install --upgrade pip >/dev/null
+
 echo "==> Installing requirements"
-./venv/bin/pip install --upgrade pip >/dev/null
-./venv/bin/pip install -r requirements.txt
+./venv/bin/python -m pip install -r requirements.txt
 
 echo "==> Marking helper scripts executable"
 scripts=(
   setup_env
-  tools/feed_health
-  feeds/run
-  feeds/stop
-  feeds/status
-  feeds/start_ingest
-  feeds/start_orderbook
-  feeds/start_ob
-  feeds/restart_orderbook
-  feeds/start_24x7
-  feeds/supervise
-  feeds/venue
-  feeds/orderbook_manager
-  feeds/ingest_ctl.py
-  feeds/ob_ctl.py
-  feeds/segment_ctl.py
-  feeds/ws_ingest_daemon.py
-  feeds/orderbook_daemon.py
+  ops/feed_health
+  ops/ingest_ctl
+  ops/stop
+  ops/status
+  ops/deploy
+  ops/ctl
+  ops/discover
+  ops/segment_health
+  ops/internal/start_ingest
+  ops/internal/start_24x7
+  ops/internal/supervise
+  ops/internal/venue_profile
+  ops/internal/ws_ingest_daemon
 )
 
 for script in "${scripts[@]}"; do
@@ -43,7 +48,8 @@ for script in "${scripts[@]}"; do
 done
 
 echo "==> Done. Start pipeline with:"
-echo "    ./feeds/run"
-echo "  Control sockets (after feeds/run):"
-echo "    ./feeds/ingest_ctl.py SUB BTC-USD"
-echo "    ./feeds/ob_ctl.py ADD BTC-USD 200 200"
+echo "    ./ops/deploy coinbase --status --health"
+echo "    ./ops/deploy kraken --status --health"
+echo "    ./ops/deploy hyperliquid --status --health"
+echo "  Control sockets (after ops/deploy ...):"
+echo "    ./ops/ingest_ctl sub BTC-USD"

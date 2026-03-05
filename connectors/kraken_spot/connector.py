@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable, Sequence
 from typing import Any, Optional
 
 import orjson
@@ -13,6 +14,8 @@ from deepwater.utils.timestamps import parse_us_timestamp
 
 
 def trades_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Kraken trades."""
+
     return {
         "feed_name": f"KR-TRADES-{pid}",
         "mode": "UF",
@@ -35,6 +38,8 @@ def trades_spec(pid: str) -> dict:
 
 
 def l2_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Kraken L2 book events."""
+
     return {
         "feed_name": f"KR-L2-{pid}",
         "mode": "UF",
@@ -56,7 +61,7 @@ def l2_spec(pid: str) -> dict:
     }
 
 
-def _ensure_bytes(val) -> Optional[bytes]:
+def _ensure_bytes(val: Any) -> Optional[bytes]:
     if val is None:
         return None
     if isinstance(val, (bytes, bytearray, memoryview)):
@@ -64,7 +69,7 @@ def _ensure_bytes(val) -> Optional[bytes]:
     return str(val).encode("ascii")
 
 
-def _parse_ts(val) -> int:
+def _parse_ts(val: Any) -> int:
     data = _ensure_bytes(val)
     if not data:
         return 0
@@ -113,18 +118,24 @@ class KrakenSpotConnector:
         self._last_ping = now
         self._trade_fallback_id = 0
 
-    def trades_spec(self, pid: str) -> dict:
-        return trades_spec(pid)
+    def feed_specs(self, pid: str) -> dict[str, dict]:
+        """Return feed specs for Kraken trades and L2 book updates."""
 
-    def l2_spec(self, pid: str) -> dict:
-        return l2_spec(pid)
+        return {
+            "trades": trades_spec(pid),
+            "l2": l2_spec(pid),
+        }
 
-    def on_connect(self, engine) -> None:
+    def on_connect(self, engine: Any) -> None:
+        """Initialize heartbeat timestamps after websocket connect."""
+
         now = time.monotonic()
         engine._hb_last = now
         self._last_ping = now
 
-    def send_subscribe(self, engine, product_ids) -> None:
+    def send_subscribe(self, engine: Any, product_ids: Sequence[str]) -> None:
+        """Send Kraken subscription messages for trade and book channels."""
+
         symbols = [_product_to_symbol(p) for p in product_ids if p]
         if not symbols:
             return
@@ -138,7 +149,9 @@ class KrakenSpotConnector:
             )
         )
 
-    def send_unsubscribe(self, engine, targets) -> None:
+    def send_unsubscribe(self, engine: Any, targets: Sequence[str]) -> None:
+        """Send Kraken unsubscribe messages for trade and book channels."""
+
         symbols = [_product_to_symbol(p) for p in targets if p]
         if not symbols:
             return
@@ -149,7 +162,9 @@ class KrakenSpotConnector:
         self._trade_fallback_id = (self._trade_fallback_id + 1) & 0xFFFF
         return ((evt_us & 0xFFFFFFFFFFFF) << 16) | self._trade_fallback_id
 
-    def on_timeout(self, engine) -> None:
+    def on_timeout(self, engine: Any) -> None:
+        """Send keepalive pings and enforce heartbeat timeout."""
+
         now_mono = time.monotonic()
         hb_age = now_mono - engine._hb_last
         if hb_age > self._hb_timeout:
@@ -163,7 +178,9 @@ class KrakenSpotConnector:
                 pass
             self._last_ping = now_mono
 
-    def handle_raw(self, engine, raw, recv_us: int, now_us) -> None:
+    def handle_raw(self, engine: Any, raw: bytes | str, recv_us: int, now_us: Callable[[], int]) -> None:
+        """Parse Kraken payloads and write trades/book updates."""
+
         try:
             doc = self._parser.parse(raw).as_dict()
         except Exception as e:
@@ -186,8 +203,9 @@ class KrakenSpotConnector:
         if packet_us <= 0:
             packet_us = recv_us
 
-        trade_writers = engine.trade_writers
-        book_writers = engine.book_writers
+        family_writers = engine.family_writers
+        trade_writers = family_writers.get("trades", {})
+        book_writers = family_writers.get("l2", {})
 
         if channel == "trade":
             data = doc.get("data") or []
@@ -251,5 +269,7 @@ class KrakenSpotConnector:
                     writer.write_values(evt_us, recv_us, proc_us, packet_us, l2_type, b"A", _to_float(u.get("price")), _to_float(u.get("qty")), create_index=idx)
                     idx = False
 
-    def extra_status(self, _engine) -> dict:
+    def extra_status(self, _engine: Any) -> dict[str, Any]:
+        """Return Kraken connector-specific runtime status fields."""
+
         return {"uri": self.uri, "book_depth": self.book_depth}

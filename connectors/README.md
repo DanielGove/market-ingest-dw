@@ -9,33 +9,53 @@ Current connector modules:
 Goals:
 - keep shared ingest runtime venue-agnostic
 - keep venue-specific transport/subscription/parsing logic connector-owned
-- support event families beyond trades/l2/orderbook
+- support event families beyond trades/l2
 
 Current runtime behavior is unchanged; these adapters preserve Coinbase/Kraken
 behavior while reducing venue-specific runtime duplication.
 
 `SharedWsIngestEngine` supports:
-- compatibility mode via `trades_spec` + `l2_spec`
-- generic mode via optional `feed_specs(pid)` for arbitrary families
+- generic mode via `feed_specs(pid)` for arbitrary families
 
 Venue wrapper construction is centralized in:
-- `runtime/ingest/market_engine.py`
+- `runtime/engine_factory.py`
 
-Connector registration is centralized in:
-- `connectors/registry.py`
+Connector discovery/loading is centralized in:
+- `connectors/loader.py`
 
 ## Minimal Add-Venue Workflow
 
 To add a new venue without touching shared runtime loops:
 
 1. Add connector module under `connectors/<venue_name>/connector.py` implementing `WsConnector` from `connectors/base.py`.
-2. Define feed specs (`trades_spec`, `l2_spec`, or `feed_specs`).
-3. Add venue defaults in `runtime/venues.py`.
-4. Register the connector in `connectors/registry.py` (single registration entry).
+2. Define feed specs via `feed_specs(pid)`.
+3. Define `CONNECTOR_PROFILE` in the connector package `__init__.py` with one canonical `base_path`.
+4. Name the package by venue convention and include `connector.py`.
+
+Required `CONNECTOR_PROFILE` keys:
+- `key`
+- `label`
+- `ingest_description`
+- `websocket_uri`
+- `base_path`
+- `default_products`
+- `families`
+
+Discovery convention:
+- package under `connectors/` must be either `<venue_key>` or `<venue_key>_*`
+- package must contain `connector.py`
+- `connector.py` must contain exactly one effective `*Connector` class for the venue
+
+Required connector methods are intentionally small:
+- `feed_specs(pid)`
+- `send_subscribe(engine, product_ids)`
+- `handle_raw(engine, raw, recv_us, now_us)`
+
+Everything else (`on_connect`, `send_unsubscribe`, `on_timeout`, `extra_status`) is runtime integration polish.
 
 Shared runtime remains unchanged:
-- `runtime/ingest/ws_engine.py`
-- `runtime/ingest/ws_ingest_daemon.py`
+- `runtime/ws_engine.py`
+- `runtime/ws_ingest_daemon.py`
 
 ## Non-Trades/L2 Families (Pools, RPC, Funding)
 
@@ -51,4 +71,4 @@ No shared runtime loop changes are required.
 
 For ops visibility, include extra prefixes when checking health:
 
-- `./tools/feed_health --extra-prefixes HL-POOL,HL-RPC --window 60 --once`
+- `./ops/feed_health --window 60 --once`

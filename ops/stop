@@ -1,26 +1,36 @@
 #!/usr/bin/env bash
-# Stop pipeline processes.
+# Stop ingest runtime processes.
 # Usage:
-#   ./feeds/stop                 # stop all
-#   ./feeds/stop orderbook       # stop only orderbook daemons
-#   ./feeds/stop ingest          # stop only ingest daemon
-#   ./feeds/stop supervise       # stop only supervisor
+#   ./ops/stop [targets] [--instance <name>] [--all-instances]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PID_DIR="$SCRIPT_DIR/pids"
 
+INSTANCE_RAW="${DW_INSTANCE:-${DW_VENUE:-default}}"
+ALL_INSTANCES=0
+
+sanitize_instance() {
+  local raw="$1"
+  local s
+  s="$(printf '%s' "$raw" | tr -c '[:alnum:]_-' '_')"
+  if [ -z "$s" ]; then
+    s="default"
+  fi
+  echo "$s"
+}
+
 usage() {
   cat <<'EOF'
-Usage: ./feeds/stop [all|ingest|orderbook|supervise]...
-If omitted, defaults to "orderbook" (ingest-safe).
+Usage: ./ops/stop [all|ingest|supervise]... [--instance <name>] [--all-instances]
+If no target is provided, defaults to "all".
 EOF
 }
 
 is_valid_target() {
   case "$1" in
-    all|ingest|orderbook|supervise) return 0 ;;
+    all|ingest|supervise) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -31,29 +41,42 @@ pid_matches_service() {
   local cmd
   cmd="$(ps -p "$pid" -o args= 2>/dev/null || true)"
   case "$service" in
-    ingest) [[ "$cmd" == *"ws_ingest_daemon.py"* ]] ;;
-    orderbook) [[ "$cmd" == *"orderbook_daemon.py"* || "$cmd" == *"/feeds/orderbook_manager"* ]] ;;
-    supervise) [[ "$cmd" == *"/feeds/supervise"* ]] ;;
+    ingest) [[ "$cmd" == *"runtime/ws_ingest_daemon.py"* || "$cmd" == *"/ops/internal/ws_ingest_daemon"* ]] ;;
+    supervise) [[ "$cmd" == *"/ops/internal/supervise"* ]] ;;
     *) return 1 ;;
   esac
 }
 
 collect_pidfiles() {
   local target="$1"
-  local -n out_ref="$2"
+  local instance="$2"
+  local all_instances="$3"
+  local -n out_ref="$4"
+  local pattern
   shopt -s nullglob
   case "$target" in
     all)
-      for p in "$PID_DIR"/*.pid; do out_ref+=("$p"); done
+      if [ "$all_instances" -eq 1 ]; then
+        for p in "$PID_DIR"/*.pid; do out_ref+=("$p"); done
+      else
+        for p in "$PID_DIR"/*."$instance".pid; do out_ref+=("$p"); done
+      fi
       ;;
     ingest)
-      for p in "$PID_DIR"/ingest*.pid; do out_ref+=("$p"); done
-      ;;
-    orderbook)
-      for p in "$PID_DIR"/orderbook*.pid; do out_ref+=("$p"); done
+      if [ "$all_instances" -eq 1 ]; then
+        pattern="$PID_DIR"/ingest*.pid
+      else
+        pattern="$PID_DIR"/ingest."$instance".pid
+      fi
+      for p in $pattern; do out_ref+=("$p"); done
       ;;
     supervise)
-      for p in "$PID_DIR"/supervise*.pid; do out_ref+=("$p"); done
+      if [ "$all_instances" -eq 1 ]; then
+        pattern="$PID_DIR"/supervise*.pid
+      else
+        pattern="$PID_DIR"/supervise."$instance".pid
+      fi
+      for p in $pattern; do out_ref+=("$p"); done
       ;;
   esac
   shopt -u nullglob
@@ -91,8 +114,6 @@ stop_pidfile() {
 
   if [[ "$name" == ingest* ]]; then
     service="ingest"
-  elif [[ "$name" == orderbook* ]]; then
-    service="orderbook"
   elif [[ "$name" == supervise* ]]; then
     service="supervise"
   else
@@ -121,11 +142,32 @@ stop_pidfile() {
   rm -f "$pidfile"
 }
 
-targets=("$@")
+targets=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --instance)
+      INSTANCE_RAW="${2:-}"
+      shift 2
+      ;;
+    --all-instances)
+      ALL_INSTANCES=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      targets+=("$1")
+      shift
+      ;;
+  esac
+done
+
+INSTANCE="$(sanitize_instance "$INSTANCE_RAW")"
+
 if [ "${#targets[@]}" -eq 0 ]; then
-  targets=("orderbook")
-  echo "no target provided; defaulting to orderbook (ingest preserved)"
-  echo "use './feeds/stop all' for full pipeline stop"
+  targets=("all")
 fi
 for t in "${targets[@]}"; do
   if ! is_valid_target "$t"; then
@@ -143,37 +185,28 @@ for t in "${targets[@]}"; do
 done
 
 need_ingest=0
-need_orderbook=0
 need_supervise=0
 for t in "${targets[@]}"; do
   case "$t" in
     all)
       need_ingest=1
-      need_orderbook=1
       need_supervise=1
       ;;
     ingest) need_ingest=1 ;;
-    orderbook) need_orderbook=1 ;;
     supervise) need_supervise=1 ;;
   esac
 done
 
-if [ "$need_ingest" -eq 1 ]; then
-  kill_orphans_by_pattern "$ROOT_DIR/feeds/ws_ingest_daemon.py"
-fi
-if [ "$need_orderbook" -eq 1 ]; then
-  kill_orphans_by_pattern "$ROOT_DIR/feeds/orderbook_manager"
-  kill_orphans_by_pattern "$ROOT_DIR/feeds/orderbook_daemon.py"
-fi
-if [ "$need_supervise" -eq 1 ]; then
-  kill_orphans_by_pattern "$ROOT_DIR/feeds/supervise"
-fi
-
 echo "stopping data pipeline: ${targets[*]}"
+if [ "$ALL_INSTANCES" -eq 1 ]; then
+  echo "  scope=all-instances"
+else
+  echo "  scope=instance:$INSTANCE"
+fi
 
 pidfiles=()
 for t in "${targets[@]}"; do
-  collect_pidfiles "$t" pidfiles
+  collect_pidfiles "$t" "$INSTANCE" "$ALL_INSTANCES" pidfiles
 done
 
 declare -A seen=()
@@ -189,16 +222,37 @@ for p in "${unique_pidfiles[@]}"; do
   stop_pidfile "$p"
 done
 
+if [ "$ALL_INSTANCES" -eq 1 ]; then
+  if [ "$need_ingest" -eq 1 ]; then
+    kill_orphans_by_pattern "$ROOT_DIR/runtime/ws_ingest_daemon.py"
+  fi
+  if [ "$need_supervise" -eq 1 ]; then
+    kill_orphans_by_pattern "$ROOT_DIR/ops/internal/supervise"
+  fi
+else
+  if [ "$need_ingest" -eq 1 ]; then
+    kill_orphans_by_pattern "$PID_DIR/ingest.$INSTANCE.sock"
+  fi
+  if [ "$need_supervise" -eq 1 ]; then
+    kill_orphans_by_pattern "$ROOT_DIR/ops/internal/supervise --instance $INSTANCE"
+  fi
+fi
+
 for t in "${targets[@]}"; do
   case "$t" in
     all)
-      rm -f "$PID_DIR"/*.sock
+      if [ "$ALL_INSTANCES" -eq 1 ]; then
+        rm -f "$PID_DIR"/*.sock
+      else
+        rm -f "$PID_DIR"/*."$INSTANCE".sock
+      fi
       ;;
     ingest)
-      rm -f "$PID_DIR"/ingest*.sock
-      ;;
-    orderbook)
-      rm -f "$PID_DIR"/orderbook*.sock
+      if [ "$ALL_INSTANCES" -eq 1 ]; then
+        rm -f "$PID_DIR"/ingest*.sock
+      else
+        rm -f "$PID_DIR"/ingest."$INSTANCE".sock
+      fi
       ;;
   esac
 done

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PY="${PY:-$ROOT_DIR/venv/bin/python}"
+
+INSTANCE_ARG=""
+VENUE_ARG=""
+HAS_VENUE_ARG=0
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+  if [ "${args[$i]}" = "--instance" ] && [ $((i+1)) -lt ${#args[@]} ]; then
+    INSTANCE_ARG="${args[$((i+1))]}"
+  fi
+  if [ "${args[$i]}" = "--venue" ] && [ $((i+1)) -lt ${#args[@]} ]; then
+    HAS_VENUE_ARG=1
+    VENUE_ARG="${args[$((i+1))]}"
+  fi
+done
+
+if [ ! -x "$PY" ]; then
+  PY="python3"
+fi
+
+INSTANCE="${INSTANCE_ARG:-${DW_INSTANCE:-${DW_VENUE:-default}}}"
+
+resolve_live_venue() {
+  local status_json
+  status_json="$($SCRIPT_DIR/ingest_ctl status --instance "$INSTANCE" 2>/dev/null || true)"
+  "$PY" - <<'PY' "$status_json"
+import json, sys
+try:
+  payload = json.loads(sys.argv[1] or "{}")
+except Exception:
+  print("")
+  raise SystemExit(0)
+raw = str(payload.get("venue", "") or "").strip().lower()
+if raw.endswith("_spot") or raw.endswith("_perp"):
+  raw = raw.split("_", 1)[0]
+print(raw)
+PY
+}
+
+VENUE_KEY=""
+if [ "$HAS_VENUE_ARG" -eq 1 ]; then
+  VENUE_KEY="$VENUE_ARG"
+else
+  VENUE_KEY="${DW_VENUE_KEY:-${DW_VENUE:-}}"
+  if [ -z "$VENUE_KEY" ]; then
+    VENUE_KEY="$(resolve_live_venue)"
+  fi
+fi
+
+if [ -z "$VENUE_KEY" ]; then
+  echo "feed_health: unable to resolve venue (use --venue or set DW_VENUE_KEY/DW_VENUE)" >&2
+  exit 2
+fi
+
+if [ "$HAS_VENUE_ARG" -eq 1 ]; then
+  PYTHONPATH="$ROOT_DIR" exec "$PY" "$ROOT_DIR/runtime/feed_health.py" "$@"
+fi
+
+PYTHONPATH="$ROOT_DIR" exec "$PY" "$ROOT_DIR/runtime/feed_health.py" --venue "$VENUE_KEY" "$@"

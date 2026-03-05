@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./ops/deploy <venue> [options]
+
+Venues:
+  coinbase | kraken | hyperliquid
+
+Options:
+  --instance <name>        Runtime instance name (default: venue)
+  --products <csv>         Product list, e.g. BTC-USD,ETH-USD
+  --base-path <path>       Override base path for feed storage
+  --uri <ws-url>           Override websocket URI
+  --book-depth <n>         Kraken book depth (default 1000)
+  --pin-cpus <list>        Pin ingest process to CPU set (taskset format, e.g. 2 or 2,3)
+  --python <path>          Python executable override
+  --with-supervise         Ensure supervise is running (default)
+  --no-supervise           Keep supervise down
+  --setup-env              Run ./setup_env before deploy
+  --status                 Print ./ops/status after deploy
+  --health                 Run one-shot health after deploy
+  -h|--help                Show this help
+
+Examples:
+  ./ops/deploy kraken --products BTC-USD --status --health
+  ./ops/deploy coinbase --pin-cpus 2 --status
+  ./ops/deploy hyperliquid --uri wss://your-edge.example/ws --with-supervise
+EOF
+}
+
+if [ $# -lt 1 ]; then
+  usage
+  exit 1
+fi
+
+VENUE="$1"
+shift || true
+
+case "$VENUE" in
+  coinbase|kraken|hyperliquid) ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "unsupported venue: $VENUE" >&2
+    usage
+    exit 2
+    ;;
+esac
+
+PRODUCTS=""
+BASE_PATH=""
+URI=""
+BOOK_DEPTH=""
+PIN_CPUS=""
+INSTANCE=""
+PY=""
+WITH_SUPERVISE=1
+RUN_SETUP=0
+SHOW_STATUS=0
+RUN_HEALTH=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --products)
+      PRODUCTS="${2:-}"; shift 2 ;;
+    --instance)
+      INSTANCE="${2:-}"; shift 2 ;;
+    --base-path)
+      BASE_PATH="${2:-}"; shift 2 ;;
+    --uri)
+      URI="${2:-}"; shift 2 ;;
+    --book-depth)
+      BOOK_DEPTH="${2:-}"; shift 2 ;;
+    --pin-cpus)
+      PIN_CPUS="${2:-}"; shift 2 ;;
+    --python)
+      PY="${2:-}"; shift 2 ;;
+    --with-supervise)
+      WITH_SUPERVISE=1; shift ;;
+    --no-supervise)
+      WITH_SUPERVISE=0; shift ;;
+    --setup-env)
+      RUN_SETUP=1; shift ;;
+    --status)
+      SHOW_STATUS=1; shift ;;
+    --health)
+      RUN_HEALTH=1; shift ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+cd "$ROOT_DIR"
+
+if [ "$RUN_SETUP" -eq 1 ]; then
+  ./setup_env
+fi
+
+if [ -n "$PRODUCTS" ]; then export PRODUCTS; fi
+if [ -n "$BASE_PATH" ]; then export BASE_PATH; fi
+if [ -n "$URI" ]; then export URI; fi
+if [ -n "$BOOK_DEPTH" ]; then export BOOK_DEPTH; fi
+if [ -n "$PIN_CPUS" ]; then export INGEST_PIN_CPUS="$PIN_CPUS"; fi
+if [ -n "$PY" ]; then export PY; fi
+if [ -z "$INSTANCE" ]; then INSTANCE="$VENUE"; fi
+export DW_INSTANCE="$INSTANCE"
+
+echo "deploying venue=$VENUE instance=$INSTANCE"
+if [ -n "$PRODUCTS" ]; then echo "  products=$PRODUCTS"; fi
+if [ -n "$BASE_PATH" ]; then echo "  base_path=$BASE_PATH"; fi
+if [ -n "$URI" ]; then echo "  uri=$URI"; fi
+if [ -n "$PIN_CPUS" ]; then echo "  pin_cpus=$PIN_CPUS"; fi
+
+DW_VENUE="$VENUE" DW_INSTANCE="$INSTANCE" ./ops/stop ingest --instance "$INSTANCE" >/dev/null 2>&1 || true
+
+if [ "$WITH_SUPERVISE" -eq 1 ]; then
+  DW_VENUE="$VENUE" DW_INSTANCE="$INSTANCE" ./ops/ctl ensure --instance "$INSTANCE" --ingest up --supervise up
+else
+  DW_VENUE="$VENUE" DW_INSTANCE="$INSTANCE" ./ops/ctl ensure --instance "$INSTANCE" --ingest up --supervise down
+fi
+
+if [ "$SHOW_STATUS" -eq 1 ]; then
+  DW_VENUE="$VENUE" DW_INSTANCE="$INSTANCE" ./ops/status --instance "$INSTANCE" --no-health || true
+fi
+
+if [ "$RUN_HEALTH" -eq 1 ]; then
+  DW_VENUE="$VENUE" DW_INSTANCE="$INSTANCE" ./ops/feed_health --instance "$INSTANCE" --window 30 --once --hide-idle || true
+fi
+
+echo "deploy complete"

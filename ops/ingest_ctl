@@ -9,4 +9,4 @@ if [ ! -x "$PY" ]; then
   PY="python3"
 fi
 
-exec "$PY" "$SCRIPT_DIR/feed_health.py" "$@"
+PYTHONPATH="$ROOT_DIR" exec "$PY" "$ROOT_DIR/runtime/ingest_ctl.py" "$@"

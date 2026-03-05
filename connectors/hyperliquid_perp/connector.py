@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import orjson
@@ -11,6 +12,8 @@ from websocket import WebSocketConnectionClosedException
 
 
 def trades_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Hyperliquid trades."""
+
     return {
         "feed_name": f"HL-TRADES-{pid}",
         "mode": "UF",
@@ -33,6 +36,8 @@ def trades_spec(pid: str) -> dict:
 
 
 def l2_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Hyperliquid L2 book snapshots."""
+
     return {
         "feed_name": f"HL-L2-{pid}",
         "mode": "UF",
@@ -97,16 +102,12 @@ class HyperliquidPerpConnector:
         self._last_ping = now
         self._trade_fallback_id = 0
 
-    def trades_spec(self, pid: str) -> dict:
-        return trades_spec(pid)
-
-    def l2_spec(self, pid: str) -> dict:
-        return l2_spec(pid)
-
     def feed_specs(self, pid: str) -> dict[str, dict]:
+        """Return primary and optional extra feed specs for one product."""
+
         specs = {
-            "trades": self.trades_spec(pid),
-            "l2": self.l2_spec(pid),
+            "trades": trades_spec(pid),
+            "l2": l2_spec(pid),
         }
         extras = self.extra_feed_specs(pid)
         if extras:
@@ -114,14 +115,20 @@ class HyperliquidPerpConnector:
         return specs
 
     def extra_feed_specs(self, _pid: str) -> dict[str, dict]:
+        """Override in subclasses/connectors to provide additional feed families."""
+
         return {}
 
-    def on_connect(self, engine) -> None:
+    def on_connect(self, engine: Any) -> None:
+        """Initialize heartbeat and ping timers after websocket connect."""
+
         now = time.monotonic()
         engine._hb_last = now
         self._last_ping = now
 
-    def send_subscribe(self, engine, product_ids) -> None:
+    def send_subscribe(self, engine: Any, product_ids: Sequence[str]) -> None:
+        """Send Hyperliquid subscribe messages for trades and l2Book channels."""
+
         coins = [_product_to_coin(p) for p in product_ids if p]
         if not coins:
             return
@@ -143,7 +150,9 @@ class HyperliquidPerpConnector:
                 )
             )
 
-    def send_unsubscribe(self, engine, targets) -> None:
+    def send_unsubscribe(self, engine: Any, targets: Sequence[str]) -> None:
+        """Send Hyperliquid unsubscribe messages for trades and l2Book channels."""
+
         coins = [_product_to_coin(p) for p in targets if p]
         if not coins:
             return
@@ -169,7 +178,9 @@ class HyperliquidPerpConnector:
         self._trade_fallback_id = (self._trade_fallback_id + 1) & 0xFFFF
         return ((evt_us & 0xFFFFFFFFFFFF) << 16) | self._trade_fallback_id
 
-    def on_timeout(self, engine) -> None:
+    def on_timeout(self, engine: Any) -> None:
+        """Send keepalive pings and reconnect on heartbeat timeout."""
+
         now_mono = time.monotonic()
         hb_age = now_mono - engine._hb_last
         if hb_age > self._hb_timeout:
@@ -183,7 +194,9 @@ class HyperliquidPerpConnector:
                 pass
             self._last_ping = now_mono
 
-    def handle_raw(self, engine, raw, recv_us: int, now_us) -> None:
+    def handle_raw(self, engine: Any, raw: bytes | str, recv_us: int, now_us: Callable[[], int]) -> None:
+        """Parse Hyperliquid payloads and write trades/l2Book records."""
+
         try:
             doc = self._parser.parse(raw).as_dict()
         except Exception as e:
@@ -200,8 +213,9 @@ class HyperliquidPerpConnector:
             engine.log.error("WS error message: %r", doc)
             return
 
-        trade_writers = engine.trade_writers
-        book_writers = engine.book_writers
+        family_writers = engine.family_writers
+        trade_writers = family_writers.get("trades", {})
+        book_writers = family_writers.get("l2", {})
 
         if channel == "trades":
             data = doc.get("data") or []
@@ -293,7 +307,9 @@ class HyperliquidPerpConnector:
                 )
                 idx = False
 
-    def extra_status(self, _engine) -> dict:
+    def extra_status(self, _engine: Any) -> dict[str, Any]:
+        """Return Hyperliquid connector-specific runtime status fields."""
+
         return {
             "uri": self.uri,
             "venue": "hyperliquid",

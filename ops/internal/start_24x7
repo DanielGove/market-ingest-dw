@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+INSTANCE_RAW="${DW_INSTANCE:-${DW_VENUE:-default}}"
+if [ "${1:-}" = "--instance" ]; then
+  INSTANCE_RAW="${2:-}"
+  shift 2 || true
+fi
+INSTANCE="$(printf '%s' "$INSTANCE_RAW" | tr -c '[:alnum:]_-' '_')"
+if [ -z "$INSTANCE" ]; then
+  INSTANCE="default"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_DIR="$SCRIPT_DIR/pids"
-LOG_DIR="$SCRIPT_DIR/logs"
-SUP_PIDFILE="$PID_DIR/supervise.pid"
-SUP_LOGFILE="$LOG_DIR/supervise.log"
-LOCKDIR="$PID_DIR/start_24x7.lockdir"
+OPS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PID_DIR="$OPS_DIR/pids"
+LOG_DIR="$OPS_DIR/logs"
+SUP_PIDFILE="$PID_DIR/supervise.$INSTANCE.pid"
+SUP_LOGFILE="$LOG_DIR/supervise.$INSTANCE.log"
+LOCKDIR="$PID_DIR/start_24x7.$INSTANCE.lockdir"
 
 mkdir -p "$PID_DIR" "$LOG_DIR"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
@@ -16,8 +27,8 @@ fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
 
 find_supervise_pids() {
-  ps -eo pid=,args= | awk -v script="$SCRIPT_DIR/supervise" '
-    index($0, script) > 0 && index($0, "start_24x7") == 0 { print $1 }
+  ps -eo pid=,args= | awk -v script="$SCRIPT_DIR/supervise" -v instance="$INSTANCE" '
+    index($0, script) > 0 && index($0, "start_24x7") == 0 && index($0, "--instance " instance) > 0 { print $1 }
   '
 }
 
@@ -42,7 +53,7 @@ if [ -f "$SUP_PIDFILE" ]; then
   rm -f "$SUP_PIDFILE"
 fi
 
-nohup "$SCRIPT_DIR/supervise" >>"$SUP_LOGFILE" 2>&1 &
+DW_INSTANCE="$INSTANCE" nohup "$SCRIPT_DIR/supervise" --instance "$INSTANCE" >>"$SUP_LOGFILE" 2>&1 &
 echo $! > "$SUP_PIDFILE"
 sleep 1
 pid="$(cat "$SUP_PIDFILE")"
