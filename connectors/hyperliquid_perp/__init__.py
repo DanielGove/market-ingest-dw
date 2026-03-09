@@ -25,7 +25,7 @@ CONNECTOR_PROFILE = {
 	"websocket_uri": "wss://api.hyperliquid.xyz/ws",
 	"base_path": "/deepwater/data/hyperliquid",
 	"default_products": f"{_CRYPTO_PERPS},{_TRADFI_PERPS}",
-	"families": ("trades", "l2"),
+	"families": ("trades", "l2", "perp_ctx"),
 }
 
 __all__ = ["CONNECTOR_PROFILE"]
