@@ -5,7 +5,7 @@ Lean multi-venue websocket ingestion runtime built on Deepwater.
 ## Scope
 
 - Shared websocket ingest runtime
-- Venue connectors (Coinbase/Kraken/Hyperliquid)
+- Venue connectors (Coinbase/Kraken/Hyperliquid Perp)
 - Runtime data plane for 24x7 websocket ingest + feed writes
 - Control sockets + operational run/status/stop tooling
 - Feed health monitoring
@@ -60,6 +60,31 @@ Notes:
 - `--instance` identifies the daemon instance token.
 - `--venue`/`DW_VENUE_KEY` identifies connector platform.
 - Health/status commands now fail fast when venue cannot be resolved.
+
+### Hyperliquid Perpetuals
+
+The `hyperliquid` connector ingests trades and L2 book snapshots from the
+Hyperliquid perp DEX WebSocket API (`wss://api.hyperliquid.xyz/ws`).
+
+**Default product set** — main crypto perps by open interest / volume plus
+non-crypto perpetuals using Hyperliquid's `@<ticker>` index notation:
+
+| Category | Products |
+|----------|----------|
+| Crypto perps | BTC-USD, ETH-USD, SOL-USD, XRP-USD, BNB-USD, AVAX-USD, DOGE-USD, LINK-USD, ARB-USD, OP-USD, MATIC-USD, SUI-USD, APT-USD, INJ-USD, TIA-USD, WIF-USD |
+| S&P 500 index perp | @SPX-USD |
+| Gold futures perp | @GOLD-USD |
+| Silver futures perp | @SILVER-USD |
+
+> The `@`-prefixed tickers map directly to Hyperliquid's index perpetual coin
+> names.  If a particular instrument is not yet live on Hyperliquid the
+> subscription is silently skipped; no runtime error is raised.
+
+Override the product list at deploy time:
+
+```bash
+./ops/deploy hyperliquid --products "BTC-USD,ETH-USD,@GOLD-USD,@SPX-USD"
+```
 
 ## Control Plane
 

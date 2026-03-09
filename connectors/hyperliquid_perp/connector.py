@@ -59,6 +59,36 @@ def l2_spec(pid: str) -> dict:
     }
 
 
+def perp_ctx_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Hyperliquid perp context snapshots.
+
+    Captures the derivatives-specific state delivered by the activeAssetCtx
+    channel: funding rate, open interest, mark/oracle prices, mid price, and
+    the mark/oracle premium.  Each record is a complete state snapshot; every
+    record is an index point so playback can start from any message.
+    """
+
+    return {
+        "feed_name": f"HL-PERP-CTX-{pid}",
+        "mode": "UF",
+        "fields": [
+            {"name": "event_time", "type": "uint64", "desc": "event timestamp (us); Hyperliquid omits a server timestamp on this channel so this always equals received_time"},
+            {"name": "received_time", "type": "uint64", "desc": "time packet was received (us)"},
+            {"name": "processed_time", "type": "uint64", "desc": "time packet was ingested (us)"},
+            {"name": "funding", "type": "float64", "desc": "current hourly funding rate (signed; negative = shorts pay longs)"},
+            {"name": "open_interest", "type": "float64", "desc": "total open interest in base asset"},
+            {"name": "mark_px", "type": "float64", "desc": "mark price used for liquidations and unrealised P&L"},
+            {"name": "oracle_px", "type": "float64", "desc": "oracle / index price"},
+            {"name": "mid_px", "type": "float64", "desc": "mid price (0.0 for any null or non-numeric value, e.g. TradFi instruments outside market hours)"},
+            {"name": "premium", "type": "float64", "desc": "basis: (mark - oracle) / oracle"},
+        ],
+        "clock_level": 3,
+        "chunk_size_bytes": 0.0625 * 1024 * 1024,
+        "persist": True,
+        "index_playback": True,
+    }
+
+
 def _to_float(val: Any) -> float:
     try:
         return float(val)
@@ -108,6 +138,7 @@ class HyperliquidPerpConnector:
         specs = {
             "trades": trades_spec(pid),
             "l2": l2_spec(pid),
+            "perp_ctx": perp_ctx_spec(pid),
         }
         extras = self.extra_feed_specs(pid)
         if extras:
@@ -127,7 +158,7 @@ class HyperliquidPerpConnector:
         self._last_ping = now
 
     def send_subscribe(self, engine: Any, product_ids: Sequence[str]) -> None:
-        """Send Hyperliquid subscribe messages for trades and l2Book channels."""
+        """Send Hyperliquid subscribe messages for trades, l2Book, and activeAssetCtx channels."""
 
         coins = [_product_to_coin(p) for p in product_ids if p]
         if not coins:
@@ -149,9 +180,17 @@ class HyperliquidPerpConnector:
                     }
                 )
             )
+            engine._ws.send(
+                orjson.dumps(
+                    {
+                        "method": "subscribe",
+                        "subscription": {"type": "activeAssetCtx", "coin": coin},
+                    }
+                )
+            )
 
     def send_unsubscribe(self, engine: Any, targets: Sequence[str]) -> None:
-        """Send Hyperliquid unsubscribe messages for trades and l2Book channels."""
+        """Send Hyperliquid unsubscribe messages for trades, l2Book, and activeAssetCtx channels."""
 
         coins = [_product_to_coin(p) for p in targets if p]
         if not coins:
@@ -170,6 +209,14 @@ class HyperliquidPerpConnector:
                     {
                         "method": "unsubscribe",
                         "subscription": {"type": "l2Book", "coin": coin},
+                    }
+                )
+            )
+            engine._ws.send(
+                orjson.dumps(
+                    {
+                        "method": "unsubscribe",
+                        "subscription": {"type": "activeAssetCtx", "coin": coin},
                     }
                 )
             )
@@ -195,7 +242,7 @@ class HyperliquidPerpConnector:
             self._last_ping = now_mono
 
     def handle_raw(self, engine: Any, raw: bytes | str, recv_us: int, now_us: Callable[[], int]) -> None:
-        """Parse Hyperliquid payloads and write trades/l2Book records."""
+        """Parse Hyperliquid payloads and write trades, l2Book, and perp_ctx records."""
 
         try:
             doc = self._parser.parse(raw).as_dict()
@@ -216,6 +263,7 @@ class HyperliquidPerpConnector:
         family_writers = engine.family_writers
         trade_writers = family_writers.get("trades", {})
         book_writers = family_writers.get("l2", {})
+        ctx_writers = family_writers.get("perp_ctx", {})
 
         if channel == "trades":
             data = doc.get("data") or []
@@ -306,6 +354,34 @@ class HyperliquidPerpConnector:
                     create_index=idx,
                 )
                 idx = False
+            return
+
+        if channel == "activeAssetCtx":
+            data = doc.get("data") or {}
+            if not isinstance(data, dict):
+                return
+            pid = _coin_to_product(data.get("coin"))
+            writer = ctx_writers.get(pid)
+            if writer is None:
+                return
+
+            ctx = data.get("ctx") or {}
+            if not isinstance(ctx, dict):
+                return
+
+            proc_us = now_us()
+            writer.write_values(
+                recv_us,
+                recv_us,
+                proc_us,
+                _to_float(ctx.get("funding")),
+                _to_float(ctx.get("openInterest")),
+                _to_float(ctx.get("markPx")),
+                _to_float(ctx.get("oraclePx")),
+                _to_float(ctx.get("midPx")),
+                _to_float(ctx.get("premium")),
+                create_index=True,
+            )
 
     def extra_status(self, _engine: Any) -> dict[str, Any]:
         """Return Hyperliquid connector-specific runtime status fields."""
