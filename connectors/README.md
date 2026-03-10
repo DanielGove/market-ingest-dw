@@ -72,3 +72,20 @@ No shared runtime loop changes are required.
 For ops visibility, include extra prefixes when checking health:
 
 - `./ops/feed_health --window 60 --once`
+
+## Recommended Expansion Order
+
+To maximize coverage quickly without redesigning the shared runtime:
+
+1. Add bridge + stablecoin connectors first
+   - example families: `bridge_transfers`, `stablecoin_transfers`, `stablecoin_supply`
+2. Add one concentrated-liquidity AMM path next
+   - start with `pool_swaps`, `pool_liquidity`, `pool_ticks`
+   - prefer a single high-value deployment target first (for example Uniswap v3 on Base)
+3. Extend existing perp connectors with more context
+   - example families: `funding`, `open_interest`, `liquidations`
+
+If self-hosted RPC is unavailable, build connectors around managed websocket/indexing
+providers that can emit decoded logs or event streams. Keep provider-specific transport
+and message translation inside the connector; the shared runtime does not need to know
+whether the upstream source is a CEX websocket, DEX indexer stream, or bridge event feed.

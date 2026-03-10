@@ -46,3 +46,8 @@ If code crosses these boundaries, treat that as architecture drift.
 
 - Shared runtime should stay venue-agnostic; venue logic belongs in connectors.
 - Feed family expansion beyond `trades`/`l2` should be implemented via connector `feed_specs()`.
+- The current architecture is ready for additional streaming sources such as AMM pools,
+  bridge flows, stablecoin supply events, and perp context feeds **without** changing the
+  websocket lifecycle loop.
+- Redesign shared runtime only when a source cannot be represented as connector-owned
+  families plus standard ingest health/status behavior.
