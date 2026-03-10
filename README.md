@@ -5,7 +5,7 @@ Lean multi-venue websocket ingestion runtime built on Deepwater.
 ## Scope
 
 - Shared websocket ingest runtime
-- Venue connectors (Coinbase/Kraken/Hyperliquid Perp)
+- Venue connectors (Coinbase/Kraken/Binance/Hyperliquid Perp)
 - Runtime data plane for 24x7 websocket ingest + feed writes
 - Control sockets + operational run/status/stop tooling
 - Feed health monitoring
@@ -37,6 +37,7 @@ Other venues:
 
 ```bash
 ./ops/deploy kraken --status --health
+./ops/deploy binance --status --health
 ./ops/deploy hyperliquid --status --health
 ```
 
@@ -107,3 +108,43 @@ Machine-readable discovery (for feature pipelines):
 ./ops/segment_health --all-instances
 ./ops/stop ingest
 ```
+
+## Deployment Readiness
+
+The current runtime is in a good place to run continuously **without a shared-runtime
+redesign** if these operating conditions hold:
+
+- `./ops/status --all-instances` shows healthy websocket connectivity and expected subscriptions
+- `./ops/feed_health --window 60 --once --json` shows steady row production with low lag
+- `./ops/segment_health --all-instances` shows clean boundaries without repeated churn
+- `./ops/discover --all-instances --include-schemas` remains stable enough for downstream feature jobs
+
+Decision rule:
+
+- **Go ahead with features / new connectors** when the shared runtime is stable and the next source can be modeled as connector-owned families
+- **Redesign first** only if a new source requires shared runtime behavior that is not stream-like (for example: long-running historical backfills, cross-connector joins inside ingest, or a scheduler that depends on global state)
+
+For AMMs, bridges, and stablecoin monitoring, the current connector boundary is still the right one: keep venue/provider transport and parsing inside `connectors/*`, and let the shared runtime keep doing lifecycle, health, and writes.
+
+## Aggressive Data Portfolio Priorities
+
+If the objective is answering **"where is the money coming from, where is it going?"** as fast as possible, prioritize the next feeds in this order:
+
+1. **Stablecoin + bridge flows first**
+   - Capture transfers, mint/burn events, and bridge ingress/egress for major stablecoins
+   - Start with the highest-importance rails: Ethereum, Base, Arbitrum, Optimism, BNB Chain
+   - Recommended families: `stablecoin_transfers`, `stablecoin_supply`, `bridge_transfers`
+2. **AMM pool flow next**
+   - Start with **Uniswap v3 on Base**, then **Uniswap v3 on Ethereum**, then **PancakeSwap on BNB Chain**
+   - Add v2-style pools only after the first concentrated-liquidity path is working cleanly
+   - Recommended families: `pool_swaps`, `pool_liquidity`, `pool_ticks`
+3. **Perp context expansion**
+   - Extend perp venues with `funding`, `open_interest`, `liquidations`, and venue-specific context feeds
+
+Practical sourcing guidance when self-hosting RPC is off the table:
+
+- prefer managed websocket/indexing providers over self-run RPC
+- prefer provider streams that already decode logs/events for swaps, liquidity changes, and bridge activity
+- treat raw RPC polling as a fallback, not the default ingestion path
+
+This sequence gets the biggest macro flow coverage quickly: centralized price discovery, perp leverage, AMM routing, and the cross-chain stablecoin/bridge balance sheet.

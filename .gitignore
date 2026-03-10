@@ -22,5 +22,8 @@ __pycache__/
 # Editor
 .vscode/
 
+# Local Python env
+venv/
+
 # Extra Docs
 deepwater-starter/*

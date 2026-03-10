@@ -16,7 +16,7 @@ if [ ! -x "$PY" ]; then
 fi
 if ! venue_env="$(PYTHONPATH="$ROOT_DIR" "$OPS_DIR/internal/venue_profile" --venue "$VENUE_KEY" --format shell --root-dir "$ROOT_DIR" 2>/dev/null)"; then
   echo "start_ingest: unknown venue '$VENUE_KEY' for instance '$INSTANCE'" >&2
-  echo "set DW_VENUE or DW_VENUE_KEY explicitly to one of: coinbase, kraken, hyperliquid" >&2
+  echo "set DW_VENUE or DW_VENUE_KEY explicitly to a discoverable connector venue" >&2
   exit 2
 fi
 eval "$venue_env"
