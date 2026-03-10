@@ -5,7 +5,7 @@ Lean multi-venue websocket ingestion runtime built on Deepwater.
 ## Scope
 
 - Shared websocket ingest runtime
-- Venue connectors (Coinbase/Kraken/Hyperliquid Perp)
+- Venue connectors (Coinbase/Kraken/Binance/Hyperliquid Perp)
 - Runtime data plane for 24x7 websocket ingest + feed writes
 - Control sockets + operational run/status/stop tooling
 - Feed health monitoring
@@ -37,6 +37,7 @@ Other venues:
 
 ```bash
 ./ops/deploy kraken --status --health
+./ops/deploy binance --status --health
 ./ops/deploy hyperliquid --status --health
 ```
 
@@ -65,10 +66,6 @@ Notes:
 
 The `hyperliquid` connector ingests trades and L2 book snapshots from the
 Hyperliquid perp DEX WebSocket API (`wss://api.hyperliquid.xyz/ws`).
-
-It also records derivatives context from the public `activeAssetCtx` stream into
-dedicated `perp_ctx`, `funding`, and `open_interest` feed families so feature
-work can start from normalized time series instead of re-parsing raw snapshots.
 
 **Default product set** — main crypto perps by open interest / volume plus
 non-crypto perpetuals using Hyperliquid's `@<ticker>` index notation:

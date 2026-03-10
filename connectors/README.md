@@ -4,6 +4,7 @@
 Current connector modules:
 - `connectors/coinbase_spot/connector.py`
 - `connectors/kraken_spot/connector.py`
+- `connectors/binance_spot/connector.py`
 - `connectors/hyperliquid_perp/connector.py`
 
 Goals:

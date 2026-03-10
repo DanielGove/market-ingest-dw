@@ -5,12 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
+  local venues="any discoverable connector venue"
+  if known="$(known_venues 2>/dev/null)" && [ -n "$known" ]; then
+    venues="$known"
+  fi
   cat <<'EOF'
 Usage:
   ./ops/deploy <venue> [options]
 
 Venues:
-  coinbase | kraken | hyperliquid
+EOF
+  printf '  %s\n' "$venues"
+  cat <<'EOF'
 
 Options:
   --instance <name>        Runtime instance name (default: venue)
@@ -31,7 +37,20 @@ Examples:
   ./ops/deploy kraken --products BTC-USD --status --health
   ./ops/deploy coinbase --pin-cpus 2 --status
   ./ops/deploy hyperliquid --uri wss://your-edge.example/ws --with-supervise
+  ./ops/deploy binance --products BTC-USDT,ETH-USDT --status --health
 EOF
+}
+
+known_venues() {
+  local py="${PY:-$ROOT_DIR/venv/bin/python}"
+  if [ ! -x "$py" ]; then
+    py="python3"
+  fi
+  PYTHONPATH="$ROOT_DIR" "$py" - <<'PY'
+from runtime.venue import known_venue_keys
+
+print(" | ".join(known_venue_keys()))
+PY
 }
 
 if [ $# -lt 1 ]; then
@@ -43,17 +62,17 @@ VENUE="$1"
 shift || true
 
 case "$VENUE" in
-  coinbase|kraken|hyperliquid) ;;
   -h|--help)
     usage
     exit 0
     ;;
-  *)
-    echo "unsupported venue: $VENUE" >&2
-    usage
-    exit 2
-    ;;
 esac
+
+if ! "$ROOT_DIR/ops/internal/venue_profile" --venue "$VENUE" --format json >/dev/null 2>&1; then
+  echo "unsupported venue: $VENUE" >&2
+  usage
+  exit 2
+fi
 
 PRODUCTS=""
 BASE_PATH=""
