@@ -66,6 +66,10 @@ Notes:
 The `hyperliquid` connector ingests trades and L2 book snapshots from the
 Hyperliquid perp DEX WebSocket API (`wss://api.hyperliquid.xyz/ws`).
 
+It also records derivatives context from the public `activeAssetCtx` stream into
+dedicated `perp_ctx`, `funding`, and `open_interest` feed families so feature
+work can start from normalized time series instead of re-parsing raw snapshots.
+
 **Default product set** — main crypto perps by open interest / volume plus
 non-crypto perpetuals using Hyperliquid's `@<ticker>` index notation:
 
