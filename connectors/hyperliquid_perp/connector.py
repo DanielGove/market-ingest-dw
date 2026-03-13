@@ -59,6 +59,54 @@ def l2_spec(pid: str) -> dict:
     }
 
 
+def funding_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Hyperliquid per-product hourly funding rate.
+
+    Lightweight funding-only feed derived from the activeAssetCtx stream.
+    Downstream consumers that only need the funding rate can read this feed
+    without pulling the heavier perp_ctx snapshot.
+    """
+
+    return {
+        "feed_name": f"HL-FUNDING-{pid}",
+        "mode": "UF",
+        "fields": [
+            {"name": "event_time", "type": "uint64", "desc": "event timestamp (us); equals received_time (no server timestamp on this channel)"},
+            {"name": "received_time", "type": "uint64", "desc": "time packet was received (us)"},
+            {"name": "processed_time", "type": "uint64", "desc": "time packet was ingested (us)"},
+            {"name": "funding", "type": "float64", "desc": "current hourly funding rate (signed; negative = shorts pay longs)"},
+        ],
+        "clock_level": 3,
+        "chunk_size_bytes": 0.0625 * 1024 * 1024,
+        "persist": True,
+        "index_playback": True,
+    }
+
+
+def open_interest_spec(pid: str) -> dict:
+    """Build Deepwater feed spec for Hyperliquid per-product open interest.
+
+    Lightweight OI-only feed derived from the activeAssetCtx stream.
+    Intended for downstream consumers tracking aggregate leverage / market
+    size without needing the full perp_ctx snapshot.
+    """
+
+    return {
+        "feed_name": f"HL-OI-{pid}",
+        "mode": "UF",
+        "fields": [
+            {"name": "event_time", "type": "uint64", "desc": "event timestamp (us); equals received_time (no server timestamp on this channel)"},
+            {"name": "received_time", "type": "uint64", "desc": "time packet was received (us)"},
+            {"name": "processed_time", "type": "uint64", "desc": "time packet was ingested (us)"},
+            {"name": "open_interest", "type": "float64", "desc": "total open interest in base asset"},
+        ],
+        "clock_level": 3,
+        "chunk_size_bytes": 0.0625 * 1024 * 1024,
+        "persist": True,
+        "index_playback": True,
+    }
+
+
 def perp_ctx_spec(pid: str) -> dict:
     """Build Deepwater feed spec for Hyperliquid perp context snapshots.
 
@@ -139,6 +187,8 @@ class HyperliquidPerpConnector:
             "trades": trades_spec(pid),
             "l2": l2_spec(pid),
             "perp_ctx": perp_ctx_spec(pid),
+            "funding": funding_spec(pid),
+            "open_interest": open_interest_spec(pid),
         }
         extras = self.extra_feed_specs(pid)
         if extras:
@@ -264,6 +314,8 @@ class HyperliquidPerpConnector:
         trade_writers = family_writers.get("trades", {})
         book_writers = family_writers.get("l2", {})
         ctx_writers = family_writers.get("perp_ctx", {})
+        funding_writers = family_writers.get("funding", {})
+        oi_writers = family_writers.get("open_interest", {})
 
         if channel == "trades":
             data = doc.get("data") or []
@@ -361,27 +413,49 @@ class HyperliquidPerpConnector:
             if not isinstance(data, dict):
                 return
             pid = _coin_to_product(data.get("coin"))
-            writer = ctx_writers.get(pid)
-            if writer is None:
-                return
 
             ctx = data.get("ctx") or {}
             if not isinstance(ctx, dict):
                 return
 
             proc_us = now_us()
-            writer.write_values(
-                recv_us,
-                recv_us,
-                proc_us,
-                _to_float(ctx.get("funding")),
-                _to_float(ctx.get("openInterest")),
-                _to_float(ctx.get("markPx")),
-                _to_float(ctx.get("oraclePx")),
-                _to_float(ctx.get("midPx")),
-                _to_float(ctx.get("premium")),
-                create_index=True,
-            )
+            funding_val = _to_float(ctx.get("funding"))
+            oi_val = _to_float(ctx.get("openInterest"))
+
+            ctx_writer = ctx_writers.get(pid)
+            if ctx_writer is not None:
+                ctx_writer.write_values(
+                    recv_us,
+                    recv_us,
+                    proc_us,
+                    funding_val,
+                    oi_val,
+                    _to_float(ctx.get("markPx")),
+                    _to_float(ctx.get("oraclePx")),
+                    _to_float(ctx.get("midPx")),
+                    _to_float(ctx.get("premium")),
+                    create_index=True,
+                )
+
+            funding_writer = funding_writers.get(pid)
+            if funding_writer is not None:
+                funding_writer.write_values(
+                    recv_us,
+                    recv_us,
+                    proc_us,
+                    funding_val,
+                    create_index=True,
+                )
+
+            oi_writer = oi_writers.get(pid)
+            if oi_writer is not None:
+                oi_writer.write_values(
+                    recv_us,
+                    recv_us,
+                    proc_us,
+                    oi_val,
+                    create_index=True,
+                )
 
     def extra_status(self, _engine: Any) -> dict[str, Any]:
         """Return Hyperliquid connector-specific runtime status fields."""
